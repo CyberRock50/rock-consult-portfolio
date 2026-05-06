@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import RiskMatrix from './RiskMatrix';
 
 const C = {
   cream:    "#f4f0e6",
@@ -440,6 +441,36 @@ function Footer({ name, setPage }) {
   );
 }
 
+// ── Risk Matrix Page ─────────────────────────────────────────────────────────
+function RiskMatrixPage({ setPage }) {
+  const project = PROJECTS.find(p => p.id === "risk-matrix");
+  return (
+    <div>
+      <DarkHeader>
+        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:4 }}>
+          <ProjectIcon type="risk" size={48} bg="rgba(219,234,254,0.12)"/>
+          <div>
+            <h1 style={{ fontFamily:F.serif, fontSize:36, fontWeight:400, color:C.cream, marginBottom:8 }}>{project.title}</h1>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {project.tags.map(t => (
+                <span key={t} style={{ fontFamily:F.sans, fontSize:11, color:C.sageLt, background:"rgba(147,197,253,0.12)", border:"1px solid rgba(147,197,253,0.22)", borderRadius:5, padding:"2px 8px" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </DarkHeader>
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"36px 28px 80px" }}>
+        <div style={{ background:C.white, border:`1px solid rgba(26,26,20,0.1)`, borderRadius:14, overflow:"hidden" }}>
+          <RiskMatrix />
+        </div>
+        <button onClick={() => setPage("projects")} style={{ marginTop:20, background:"none", border:`1px solid ${C.creamDk}`, borderRadius:8, padding:"10px 20px", fontFamily:F.sans, fontSize:13, color:C.muted, cursor:"pointer" }}>
+          ← Back to Projects
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function Portfolio() {
   const [page, setPage] = useState("home");
@@ -459,7 +490,8 @@ export default function Portfolio() {
         {page==="projects" && <Projects setPage={setPage}/>}
         {page==="about"    && <About name={name} setName={setName} skills={skills} setSkills={setSkills}/>}
         {page==="contact"  && <Contact/>}
-        {activeTool        && <ProjectDetail project={activeTool} setPage={setPage}/>}
+        {page==="risk-matrix" && <RiskMatrixPage setPage={setPage}/>}
+        {activeTool && page!=="risk-matrix" && <ProjectDetail project={activeTool} setPage={setPage}/>}
       </div>
       <Footer name={name} setPage={setPage}/>
     </div>
