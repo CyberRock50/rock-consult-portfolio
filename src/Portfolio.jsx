@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import RiskMatrix from './RiskMatrix';
+import StaffScheduler from './StaffScheduler';
 
 const C = {
   cream:    "#f4f0e6",
@@ -471,6 +472,36 @@ function RiskMatrixPage({ setPage }) {
   );
 }
 
+// ── Staff Scheduler Page ──────────────────────────────────────────────────────
+function StaffSchedulerPage({ setPage }) {
+  const project = PROJECTS.find(p => p.id === "staff-scheduler");
+  return (
+    <div>
+      <DarkHeader>
+        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:4 }}>
+          <ProjectIcon type="sched" size={48} bg="rgba(219,234,254,0.12)"/>
+          <div>
+            <h1 style={{ fontFamily:F.serif, fontSize:36, fontWeight:400, color:C.cream, marginBottom:8 }}>{project.title}</h1>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {project.tags.map(t => (
+                <span key={t} style={{ fontFamily:F.sans, fontSize:11, color:C.sageLt, background:"rgba(147,197,253,0.12)", border:"1px solid rgba(147,197,253,0.22)", borderRadius:5, padding:"2px 8px" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </DarkHeader>
+      <div style={{ maxWidth:1200, margin:"0 auto", padding:"36px 28px 80px" }}>
+        <div style={{ background:C.white, border:`1px solid rgba(26,26,20,0.1)`, borderRadius:14, overflow:"hidden" }}>
+          <StaffScheduler />
+        </div>
+        <button onClick={() => setPage("projects")} style={{ marginTop:20, background:"none", border:`1px solid ${C.creamDk}`, borderRadius:8, padding:"10px 20px", fontFamily:F.sans, fontSize:13, color:C.muted, cursor:"pointer" }}>
+          ← Back to Projects
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function Portfolio() {
   const [page, setPage] = useState("home");
@@ -490,8 +521,9 @@ export default function Portfolio() {
         {page==="projects" && <Projects setPage={setPage}/>}
         {page==="about"    && <About name={name} setName={setName} skills={skills} setSkills={setSkills}/>}
         {page==="contact"  && <Contact/>}
-        {page==="risk-matrix" && <RiskMatrixPage setPage={setPage}/>}
-        {activeTool && page!=="risk-matrix" && <ProjectDetail project={activeTool} setPage={setPage}/>}
+        {page==="risk-matrix"     && <RiskMatrixPage setPage={setPage}/>}
+        {page==="staff-scheduler" && <StaffSchedulerPage setPage={setPage}/>}
+        {activeTool && page!=="risk-matrix" && page!=="staff-scheduler" && <ProjectDetail project={activeTool} setPage={setPage}/>}
       </div>
       <Footer name={name} setPage={setPage}/>
     </div>
