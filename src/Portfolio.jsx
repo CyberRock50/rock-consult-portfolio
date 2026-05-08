@@ -4,6 +4,7 @@ import StaffScheduler from './StaffScheduler';
 import ComplianceTracker from './ComplianceTracker';
 import IncidentLog from './IncidentLog';
 import VendorScorecard from './VendorScorecard';
+import TrainingDashboard from './TrainingTracker';
 const C = {
   cream:    "#f4f0e6",
   creamDk:  "#e8e2d4",
@@ -25,7 +26,7 @@ const PROJECTS = [
   { id:"incident-log",      title:"Incident Log",                 icon:"alert",  featured:false, live:true, status:"live", year:"2025", tags:["React","Incident Response","Healthcare"],              description:"Structured incident reporting and tracking with severity classification and trend analysis." },
   { id:"vendor-scorecard",  title:"Vendor Scorecard",             icon:"score",  featured:false, live:true, status:"live", year:"2025", tags:["React","Third-Party Risk","GRC"],                     description:"Third-party risk assessment tool for evaluating healthcare vendors against compliance and security criteria." },
   { id:"policy-gap",        title:"Policy Gap Analyzer",          icon:"gap",    featured:false, live:false, status:"coming", year:"2025", tags:["React","Policy","Gap Analysis","Healthcare"],          description:"Compare policies against regulatory frameworks and identify gaps with prioritized remediation recommendations." },
-  { id:"training-tracker",  title:"Training Compliance Tracker",  icon:"train",  featured:false, live:false, status:"coming", year:"2025", tags:["React","Training","Compliance","Healthcare"],          description:"Monitor staff training completion, certifications, and compliance deadlines across departments." },
+  { id:"training-tracker",  title:"Training Compliance Tracker",  icon:"train",  featured:false, live:true, status:"live", year:"2025", tags:["React","Training","Compliance","Healthcare"],          description:"Monitor staff training completion, certifications, and compliance deadlines across departments." },
 ];
 
 // ── Icon components ──────────────────────────────────────────────────────────
@@ -443,6 +444,35 @@ function Footer({ name, setPage }) {
     </footer>
   );
 }
+// ── Training Tracker Page ─────────────────────────────────────────────────────
+function TrainingTrackerPage({ setPage }) {
+  const project = PROJECTS.find(p => p.id === "training-tracker");
+  return (
+    <div>
+      <DarkHeader>
+        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:4 }}>
+          <ProjectIcon type="train" size={48} bg="rgba(219,234,254,0.12)"/>
+          <div>
+            <h1 style={{ fontFamily:F.serif, fontSize:36, fontWeight:400, color:C.cream, marginBottom:8 }}>{project.title}</h1>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {project.tags.map(t => (
+                <span key={t} style={{ fontFamily:F.sans, fontSize:11, color:C.sageLt, background:"rgba(147,197,253,0.12)", border:"1px solid rgba(147,197,253,0.22)", borderRadius:5, padding:"2px 8px" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </DarkHeader>
+      <div style={{ maxWidth:1100, margin:"0 auto", padding:"36px 28px 80px" }}>
+        <div style={{ background:C.white, border:`1px solid rgba(26,26,20,0.1)`, borderRadius:14, overflow:"hidden" }}>
+          <TrainingDashboard />
+        </div>
+        <button onClick={() => setPage("projects")} style={{ marginTop:20, background:"none", border:`1px solid ${C.creamDk}`, borderRadius:8, padding:"10px 20px", fontFamily:F.sans, fontSize:13, color:C.muted, cursor:"pointer" }}>
+          ← Back to Projects
+        </button>
+      </div>
+    </div>
+  );
+}
 // ── Incident Log Page ─────────────────────────────────────────────────────────
 function IncidentLogPage({ setPage }) {
   const project = PROJECTS.find(p => p.id === "incident-log");
@@ -609,12 +639,13 @@ export default function Portfolio() {
         {page==="projects" && <Projects setPage={setPage}/>}
         {page==="about"    && <About name={name} setName={setName} skills={skills} setSkills={setSkills}/>}
         {page==="contact"  && <Contact/>}
+        {page==="training-tracker"   && <TrainingTrackerPage setPage={setPage}/>}
         {page==="incident-log"       && <IncidentLogPage setPage={setPage}/>}
         {page==="vendor-scorecard"   && <VendorScorecardPage setPage={setPage}/>}
         {page==="compliance-tracker" && <ComplianceTrackerPage setPage={setPage}/>}
         {page==="risk-matrix"        && <RiskMatrixPage setPage={setPage}/>}
         {page==="staff-scheduler"    && <StaffSchedulerPage setPage={setPage}/>}
-        {activeTool && !["incident-log","vendor-scorecard","compliance-tracker","risk-matrix","staff-scheduler"].includes(page) && <ProjectDetail project={activeTool} setPage={setPage}/>}
+        {activeTool && !["training-tracker","incident-log","vendor-scorecard","compliance-tracker","risk-matrix","staff-scheduler"].includes(page) && <ProjectDetail project={activeTool} setPage={setPage}/>}
       </div>
       <Footer name={name} setPage={setPage}/>
     </div>
