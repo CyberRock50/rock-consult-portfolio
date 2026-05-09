@@ -6,6 +6,7 @@ import IncidentLog from './IncidentLog';
 import VendorScorecard from './VendorScorecard';
 import TrainingDashboard from './TrainingTracker';
 import PolicyGapAnalyzer from './PolicyGapAnalyzer';
+import StaffAttendance from './StaffAttendance';
 const C = {
   cream:    "#f4f0e6",
   creamDk:  "#e8e2d4",
@@ -22,6 +23,7 @@ const F = { serif: "Georgia,'Times New Roman',serif", sans: "system-ui,-apple-sy
 
 const PROJECTS = [
   { id:"staff-scheduler",   title:"Staff Scheduler",              icon:"sched",  featured:true,  live:true,  status:"live",   year:"2025", tags:["React","Scheduling","AI","Operations","Healthcare"],   description:"Autonomous AI-powered weekly scheduling for 50 staff across 6 sites and 3 shifts. Drag-and-drop interface, conflict detection with undo, and Claude-generated conflict-free schedules." },
+  { id:"staff-attendance", title:"Staff Attendance", icon:"sched", featured:false, live:true, status:"live", year:"2025", tags:["React","Attendance","AI","Healthcare","Operations"], description:"Real-time clock in/out with break tracking, late flagging, manager dashboard, and AI-powered attendance insights." }, 
   { id:"risk-matrix",       title:"Risk Matrix",                  icon:"risk",   featured:false, live:true,  status:"live",   year:"2025", tags:["React","GRC","Risk Management","Healthcare"],          description:"Interactive 5×5 risk matrix for healthcare GRC. Add, edit, and categorize risks with severity scoring and visual heat-map display." },
   { id:"compliance-tracker",title:"Compliance Control Tracker",   icon:"check",  featured:false, live:true,  status:"live",   year:"2025", tags:["React","HIPAA","NIST","Compliance"],                   description:"Track controls across HIPAA, NIST, and SOC 2 frameworks with real-time status dashboards." },
   { id:"incident-log",      title:"Incident Log",                 icon:"alert",  featured:false, live:true, status:"live", year:"2025", tags:["React","Incident Response","Healthcare"],              description:"Structured incident reporting and tracking with severity classification and trend analysis." },
@@ -151,11 +153,11 @@ function Home({ setPage }) {
             Risk &amp; Compliance Tools<br/>Built for Healthcare
           </h1>
           <p style={{ fontFamily:F.sans, fontSize:17, color:"rgba(219,234,254,0.82)", marginBottom:40, lineHeight:1.65 }}>
-            7 interactive GRC tools — grounded in Allied Healthcare<br/>frameworks, built with modern React and AI.
+            8 interactive GRC tools — grounded in Allied Healthcare<br/>frameworks, built with modern React and AI.
           </p>
           <div style={{ display:"flex", gap:14, justifyContent:"center", flexWrap:"wrap" }}>
             <button onClick={() => setPage("projects")} style={{ background:"rgba(255,255,255,0.95)", color:C.ink, border:"none", borderRadius:10, padding:"14px 28px", fontFamily:F.sans, fontWeight:600, fontSize:15, cursor:"pointer" }}>
-              View All 7 Tools
+              View All 8 Tools
             </button>
             <button onClick={() => setPage("about")} style={{ background:"transparent", color:"#fff", border:"1.5px solid rgba(255,255,255,0.45)", borderRadius:10, padding:"14px 28px", fontFamily:F.sans, fontWeight:500, fontSize:15, cursor:"pointer" }}>
               About Me
@@ -232,7 +234,7 @@ function Projects({ setPage }) {
       <DarkHeader>
         <p style={{ fontFamily:F.sans, fontSize:11, letterSpacing:"1.4px", color:C.sageLt, textTransform:"uppercase", marginBottom:10 }}>Portfolio</p>
         <h1 style={{ fontFamily:F.serif, fontSize:40, fontWeight:400, color:C.cream, marginBottom:8 }}>All Tools</h1>
-        <p style={{ fontFamily:F.sans, color:"rgba(244,240,230,0.65)", fontSize:15 }}>7 interactive GRC &amp; healthcare compliance tools</p>
+        <p style={{ fontFamily:F.sans, color:"rgba(244,240,230,0.65)", fontSize:15 }}>8 interactive GRC &amp; healthcare compliance tools</p>
       </DarkHeader>
       <div style={{ maxWidth:920, margin:"0 auto", padding:"40px 28px 80px" }}>
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -443,6 +445,34 @@ function Footer({ name, setPage }) {
         </div>
       </div>
     </footer>
+  );
+}// ── Staff Attendance Page ─────────────────────────────────────────────────────
+function StaffAttendancePage({ setPage }) {
+  const project = PROJECTS.find(p => p.id === "staff-attendance");
+  return (
+    <div>
+      <DarkHeader>
+        <div style={{ display:"flex", alignItems:"center", gap:16, marginBottom:4 }}>
+          <ProjectIcon type="sched" size={48} bg="rgba(219,234,254,0.12)"/>
+          <div>
+            <h1 style={{ fontFamily:F.serif, fontSize:36, fontWeight:400, color:C.cream, marginBottom:8 }}>{project.title}</h1>
+            <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+              {project.tags.map(t => (
+                <span key={t} style={{ fontFamily:F.sans, fontSize:11, color:C.sageLt, background:"rgba(147,197,253,0.12)", border:"1px solid rgba(147,197,253,0.22)", borderRadius:5, padding:"2px 8px" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </DarkHeader>
+      <div style={{ maxWidth:1200, margin:"0 auto", padding:"36px 28px 80px" }}>
+        <div style={{ background:C.white, border:`1px solid rgba(26,26,20,0.1)`, borderRadius:14, overflow:"hidden" }}>
+          <StaffAttendance />
+        </div>
+        <button onClick={() => setPage("projects")} style={{ marginTop:20, background:"none", border:`1px solid ${C.creamDk}`, borderRadius:8, padding:"10px 20px", fontFamily:F.sans, fontSize:13, color:C.muted, cursor:"pointer" }}>
+          ← Back to Projects
+        </button>
+      </div>
+    </div>
   );
 }
 // ── Training Tracker Page ─────────────────────────────────────────────────────
@@ -669,6 +699,7 @@ export default function Portfolio() {
         {page==="projects" && <Projects setPage={setPage}/>}
         {page==="about"    && <About name={name} setName={setName} skills={skills} setSkills={setSkills}/>}
         {page==="contact"  && <Contact/>}
+        {page==="staff-attendance"   && <StaffAttendancePage setPage={setPage}/>}
         {page==="policy-gap"          && <PolicyGapPage setPage={setPage}/>}
         {page==="training-tracker"   && <TrainingTrackerPage setPage={setPage}/>}
         {page==="incident-log"       && <IncidentLogPage setPage={setPage}/>}
@@ -676,7 +707,7 @@ export default function Portfolio() {
         {page==="compliance-tracker" && <ComplianceTrackerPage setPage={setPage}/>}
         {page==="risk-matrix"        && <RiskMatrixPage setPage={setPage}/>}
         {page==="staff-scheduler"    && <StaffSchedulerPage setPage={setPage}/>}
-        {activeTool && !["policy-gap","training-tracker","incident-log","vendor-scorecard","compliance-tracker","risk-matrix","staff-scheduler"].includes(page) && <ProjectDetail project={activeTool} setPage={setPage}/>}
+        {activeTool && !["staff-attendance","policy-gap","training-tracker","incident-log","vendor-scorecard","compliance-tracker","risk-matrix","staff-scheduler"].includes(page) && <ProjectDetail project={activeTool} setPage={setPage}/>}
       </div>
       <Footer name={name} setPage={setPage}/>
     </div>
