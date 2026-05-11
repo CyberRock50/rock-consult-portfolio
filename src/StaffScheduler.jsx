@@ -93,7 +93,7 @@ function detectConflict(id,sch){
 // Routes through Netlify function — API key lives server-side only
 async function callAI(prompt,system){
   const res=await fetch("/.netlify/functions/ai-proxy",{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1800,system:system||"Return only valid JSON, no markdown.",messages:[{role:"user",content:prompt}]})
+    body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1800,system:system||"Return only valid JSON, no markdown.",messages:[{role:"user",content:prompt}]})
   });
   if(!res.ok){const e=await res.json().catch(()=>{});throw new Error(e?.error?.message||`HTTP ${res.status}`);}
   const data=await res.json();

@@ -64,7 +64,7 @@ const ScoreCircle = ({score,size=48}) => {
 async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{
     method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1200,
+    body:JSON.stringify({ model:"claude-haiku-4-5-20251001", max_tokens:1200,
       system: system||"You are a healthcare vendor risk analyst. Return only valid JSON, no markdown fences.",
       messages:[{role:"user",content:prompt}]
     })

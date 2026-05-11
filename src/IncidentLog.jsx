@@ -66,7 +66,7 @@ async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{
     method:"POST", headers:{"Content-Type":"application/json"},
     body:JSON.stringify({
-      model:"claude-sonnet-4-20250514", max_tokens:1800,
+      model:"claude-haiku-4-5-20251001", max_tokens:1800,
       system: system||"You are a senior healthcare cybersecurity incident responder. Return only valid JSON, no markdown fences.",
       messages:[{role:"user",content:prompt}]
     })
