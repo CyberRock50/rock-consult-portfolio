@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 const FONTS = { sans:"system-ui,-apple-system,'Segoe UI',Arial,sans-serif", serif:"Georgia,'Times New Roman',serif" };
 
@@ -6,6 +6,7 @@ const C = {
   cream:"#f4f0e6", creamDk:"#e8e2d4", forest:"#1b2d1b",
   sage:"#3b82f6", sageLt:"#93c5fd", sagePl:"#dbeafe",
   ink:"#1a1a14", muted:"#6b6b5e", border:"rgba(26,26,20,0.1)",
+  danger:"#dc2626", dangerLt:"#fecaca",
 };
 
 const MODULES = [
@@ -30,6 +31,9 @@ const STATUS_META = {
 
 const DEPT_COLOR = {Clinical:"#dbeafe",Administrative:"#fce7f3",IT:"#d1fae5",Executive:"#ede9fe",HR:"#fef3c7"};
 const DEPT_TEXT  = {Clinical:"#1e40af",Administrative:"#9d174d",IT:"#065f46",Executive:"#5b21b6",HR:"#92400e"};
+
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_trainingTracker_staff";
 
 const today   = new Date().toISOString().split("T")[0];
 const addDays = n => { const d=new Date(); d.setDate(d.getDate()+n); return d.toISOString().split("T")[0]; };
@@ -59,7 +63,6 @@ const SEED = [
   {id:12, name:"Tom Bradley",     department:"Clinical",       role:"Radiologist",             training:mkT([{status:"Overdue",completedDate:"",dueDate:subDays(8)},{status:"Overdue",completedDate:"",dueDate:subDays(6)},{status:"In Progress",completedDate:"",dueDate:addDays(2)},{status:"Not Required",completedDate:"",dueDate:""},{status:"Not Required",completedDate:"",dueDate:""},{status:"Completed",completedDate:subDays(30),dueDate:addDays(335)},{status:"Not Required",completedDate:"",dueDate:""}])},
 ];
 
-// Routes through Netlify function — API key lives server-side only
 async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1400,system:system||"You are a healthcare training compliance analyst. Return only valid JSON, no markdown.",messages:[{role:"user",content:prompt}]})
@@ -88,8 +91,153 @@ const PctCircle = ({p,size=56}) => {
   );
 };
 
+// ─── Guide content ─────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Training Tracking Dashboard",
+  whatIsIt: `The Training Tracking Dashboard is a workforce compliance tool for managing mandatory healthcare security and privacy training. It tracks 12 staff members across 5 departments against 7 required modules: HIPAA Privacy, HIPAA Security, Cybersecurity Awareness, Phishing Simulation, Incident Response, Role-Based Access, and New Hire Orientation.
+
+Each staff member has a per-module status (Completed, In Progress, Overdue, Not Started, or Not Required), due dates, and completion dates. The Training Matrix gives you an at-a-glance grid view of who has completed what, the Dashboard shows department and module completion rates, and the AI Insights tab generates a compliance score with at-risk department alerts, critical gaps, and a targeted campaign recommendation — the kind of analysis a compliance officer would pull together for an audit or a board report.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Review the Staff Roster",
+      detail: "The Staff Roster tab shows all 12 staff members sorted by training completion percentage (lowest first). Each card shows the staff member's completion circle, overdue count badge, role, and a mini color-coded module status strip. Use the Department, Status, and Search filters to isolate specific groups — for example, all Clinical staff with overdue training.",
+    },
+    {
+      step: "2",
+      title: "Update Training Records",
+      detail: "Click '✎ Edit' on any staff card to open the training record form. For each of the 7 modules, set the status (Not Required, Not Started, In Progress, Completed, or Overdue), assign a due date, and record a completion date when marked Completed. The completion percentage preview updates live at the bottom of the form.",
+    },
+    {
+      step: "3",
+      title: "Add New Staff",
+      detail: "Click '+ Add Staff' to create a new member. Enter their name, department, and role, then configure each module's status and dates. All modules default to 'Not Required' — assign the ones relevant to their role. This is particularly important for new hires who need the New Hire Orientation module tracked separately.",
+    },
+    {
+      step: "4",
+      title: "Use the Training Matrix",
+      detail: "The Training Matrix tab shows a full grid: every staff member vs. every module. ✓ = Completed, ! = Overdue, … = In Progress, — = Not Required/Not Started. Use this view for audit documentation or to quickly spot which modules have the most outstanding completions across the workforce.",
+    },
+    {
+      step: "5",
+      title: "Run AI Insights",
+      detail: "In the AI Insights tab, click 'Run Analysis.' Claude reviews your training data and returns a compliance score, at-risk department flags, critical gaps (modules with the most overdue completions), priority actions, and a tailored training campaign recommendation. Use this output to brief leadership or build a remediation plan.",
+    },
+  ],
+};
+
+// ─── Guide Modal ────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#fff", borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+        <div style={{padding:"1.4rem"}}>
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Training records are automatically saved to this browser as you update them. For audit-ready compliance reports, use the AI Insights analysis and supplement it with your organization's LMS export.
+            </p>
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all saved training records and restores the original 12 demo staff members. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ─────────────────────────────────────────────────────────
 export default function TrainingDashboard() {
-  const [staff,     setStaff]     = useState(SEED);
+
+  // ── State: load staff from localStorage, fall back to SEED ──
+  const [staff, setStaff] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : SEED;
+    } catch { return SEED; }
+  });
+
   const [activeTab, setActiveTab] = useState("roster");
   const [deptFilter,setDeptFilter]= useState("All");
   const [stFilter,  setStFilter]  = useState("All");
@@ -98,10 +246,24 @@ export default function TrainingDashboard() {
   const [aiReport,  setAiReport]  = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError,   setAiError]   = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const blankTraining = Object.fromEntries(MODULES.map(m=>[m.key,{status:"Not Required",dueDate:"",completedDate:""}]));
   const blank = {name:"",department:DEPARTMENTS[0],role:"",training:blankTraining};
   const [form, setForm] = useState(blank);
+
+  // ── Persist staff to localStorage whenever they change ──
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(staff)); } catch {}
+  }, [staff]);
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setStaff(SEED);
+    setAiReport(null);
+    setModal(null);
+  };
 
   const setF    = k => v => setForm(f=>({...f,[k]:v}));
   const setTRec = (mKey,field,val) => setForm(f=>({...f,training:{...f.training,[mKey]:{...f.training[mKey],[field]:val}}}));
@@ -163,9 +325,34 @@ export default function TrainingDashboard() {
 
   return (
     <div style={{fontFamily:FONTS.sans,background:C.cream,minHeight:400,color:C.ink}}>
-      <div style={{background:C.forest,padding:"1.5rem 1.75rem"}}>
-        <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Training Tracking Dashboard</h2>
-        <p style={{fontSize:12,color:C.sageLt,margin:0}}>HIPAA · Cybersecurity · Workforce Compliance · Allied Healthcare</p>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{background:C.forest,padding:"1.5rem 1.75rem",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Training Tracking Dashboard</h2>
+          <p style={{fontSize:12,color:C.sageLt,margin:0}}>HIPAA · Cybersecurity · Workforce Compliance · Allied Healthcare</p>
+        </div>
+        {/* ── Guide button ── */}
+        <button
+          onClick={() => setShowGuide(true)}
+          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:0.4,flexShrink:0}}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Guide
+        </button>
       </div>
       <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
 
@@ -401,7 +588,7 @@ export default function TrainingDashboard() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {modal&&(
         <div onClick={e=>{if(e.target===e.currentTarget)closeModal();}}
           style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>

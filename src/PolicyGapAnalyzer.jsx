@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 const FONTS = { sans:"system-ui,-apple-system,'Segoe UI',Arial,sans-serif", serif:"Georgia,'Times New Roman',serif" };
 
@@ -6,6 +6,7 @@ const C = {
   cream:"#f4f0e6", creamDk:"#e8e2d4", forest:"#1b2d1b",
   sage:"#3b82f6", sageLt:"#93c5fd", sagePl:"#dbeafe",
   ink:"#1a1a14", muted:"#6b6b5e", border:"rgba(26,26,20,0.1)",
+  danger:"#dc2626", dangerLt:"#fecaca",
 };
 
 const FRAMEWORKS = ["HIPAA","NIST CSF","ISO 27001","SOC 2","HITRUST"];
@@ -23,6 +24,9 @@ const FW_COLOR = { "HIPAA":"#ffe4e6","NIST CSF":"#dbeafe","ISO 27001":"#d1fae5",
 const FW_TEXT  = { "HIPAA":"#9f1239","NIST CSF":"#1e40af","ISO 27001":"#065f46","SOC 2":"#92400e","HITRUST":"#5b21b6" };
 const CAT_COLOR = { "Access Control":"#dbeafe","Data Privacy":"#ffe4e6","Incident Response":"#fecaca","Business Continuity":"#fef3c7","Workforce Security":"#d1fae5","Information Security":"#ede9fe","System Security":"#fce7f3","Physical Security":"#e8e2d4","Audit & Accountability":"#fef08a","Risk Management":"#fed7aa","Third-Party Risk":"#f0fdf4" };
 const CAT_TEXT  = { "Access Control":"#1e40af","Data Privacy":"#9f1239","Incident Response":"#7f1d1d","Business Continuity":"#92400e","Workforce Security":"#065f46","Information Security":"#5b21b6","System Security":"#9d174d","Physical Security":"#6b6b5e","Audit & Accountability":"#713f12","Risk Management":"#7c2d12","Third-Party Risk":"#14532d" };
+
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_policyGapAnalyzer_policies";
 
 const today  = new Date().toISOString().split("T")[0];
 const nowStr = () => new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
@@ -56,7 +60,6 @@ const covPct     = policies => policies.length ? Math.round((policies.reduce((s,
 const scoreColor = s => s>=80?"#15803d":s>=50?"#92400e":"#9f1239";
 const scoreBg    = s => s>=80?"#dcfce7":s>=50?"#fef3c7":"#fecaca";
 
-// Routes through Netlify function — API key lives server-side only
 async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1500,
@@ -76,8 +79,167 @@ const FwPill  = ({fw}) => <span style={{fontSize:10,fontWeight:600,padding:"2px 
 const CatPill = ({cat}) => <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:5,background:CAT_COLOR[cat]||C.creamDk,color:CAT_TEXT[cat]||C.muted,whiteSpace:"nowrap"}}>{cat}</span>;
 const PctBar  = ({p,color}) => <div style={{height:7,background:C.creamDk,borderRadius:10,overflow:"hidden"}}><div style={{height:"100%",width:`${p}%`,background:color,borderRadius:10,transition:"width 0.4s"}}/></div>;
 
+// ─── Guide content ────────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Policy Gap Analyzer",
+  whatIsIt: `The Policy Gap Analyzer is a healthcare GRC tool for managing your organization's complete policy inventory and identifying coverage gaps across five major compliance frameworks: HIPAA, NIST CSF, ISO 27001, SOC 2, and HITRUST.
+
+Think of it as your policy audit binder — every policy your organization should have is tracked here with its current status (Exists, Partial, Under Review, or Missing), the frameworks that require it, the policy owner, and the last review date. The Gap Analysis tab gives you a scored view of coverage by framework and category, and the AI Analysis tab sends your full inventory to Claude for a prioritized gap report with critical findings, quick wins, and a phased remediation roadmap.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Review Your Policy Registry",
+      detail: "The Policy Registry tab shows all 20 pre-loaded policies. Each card displays the policy name, category, status, owner, last review date, and applicable frameworks. Use the Framework, Status, and Category filters to focus your view — for example, all HIPAA policies that are Missing.",
+    },
+    {
+      step: "2",
+      title: "Update Policy Status",
+      detail: "Use the status dropdown on each policy card to reflect current state: Exists (fully documented and current), Partial (incomplete or outdated), Under Review (in revision), or Missing (not yet created). The coverage score in Gap Analysis updates in real time.",
+    },
+    {
+      step: "3",
+      title: "Add or Edit Policies",
+      detail: "Click '+ Add Policy' to create a new entry. Provide the name, description, category, status, owner, and last review date. Select applicable frameworks manually or use '✦ AI Suggest' to have Claude recommend which frameworks require the policy and explain why.",
+    },
+    {
+      step: "4",
+      title: "Review the Gap Analysis",
+      detail: "The Gap Analysis tab shows KPI cards (hover to flip), framework coverage bars with missing/partial counts, category coverage bars, and a highlighted list of all Missing policies. Use this view before an audit or executive review to understand your current policy posture at a glance.",
+    },
+    {
+      step: "5",
+      title: "Run AI Analysis",
+      detail: "In the AI Analysis tab, click 'Run Analysis.' Claude reviews your entire policy inventory and returns an overall compliance score, critical gaps, quick wins completable in 30 days, framework-by-framework risk scores, and a phased remediation roadmap. Use the results to build your policy remediation project plan.",
+    },
+  ],
+};
+
+// ─── Guide Modal ──────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#fff", borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        {/* Header */}
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:"1.4rem"}}>
+
+          {/* What Is It For */}
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+
+          {/* How To Use It */}
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tip */}
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Your policy inventory is automatically saved to this browser. The AI Analysis results are session-only — run a fresh analysis each session or copy key findings before closing.
+            </p>
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+
+          {/* Clear All Data */}
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all saved policies and restores the original 20 demo policies. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function PolicyGapAnalyzer() {
-  const [policies,    setPolicies]    = useState(SEED);
+
+  // ── State: load policies from localStorage, fall back to SEED ──
+  const [policies, setPolicies] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : SEED;
+    } catch { return SEED; }
+  });
+
   const [activeTab,   setActiveTab]   = useState("registry");
   const [fwFilter,    setFwFilter]    = useState("All");
   const [stFilter,    setStFilter]    = useState("All");
@@ -88,9 +250,24 @@ export default function PolicyGapAnalyzer() {
   const [aiError,     setAiError]     = useState(null);
   const [aiSuggest,   setAiSuggest]   = useState(null);
   const [suggestLoad, setSuggestLoad] = useState(false);
+  const [showGuide,   setShowGuide]   = useState(false);
 
   const blank = {name:"",category:CATEGORIES[0],frameworks:[],status:STATUSES[0],owner:"",lastReviewed:today,description:""};
   const [form, setForm] = useState(blank);
+
+  // ── Persist policies to localStorage whenever they change ──
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(policies)); } catch {}
+  }, [policies]);
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setPolicies(SEED);
+    setAiReport(null);
+    setModal(null);
+  };
+
   const setF     = k => v => setForm(f=>({...f,[k]:v}));
   const toggleFW = fw => setF("frameworks")(form.frameworks.includes(fw)?form.frameworks.filter(f=>f!==fw):[...form.frameworks,fw]);
 
@@ -152,9 +329,34 @@ export default function PolicyGapAnalyzer() {
 
   return (
     <div style={{fontFamily:FONTS.sans,background:C.cream,minHeight:400,color:C.ink}}>
-      <div style={{background:C.forest,padding:"1.5rem 1.75rem"}}>
-        <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Policy Gap Analyzer</h2>
-        <p style={{fontSize:12,color:C.sageLt,margin:0}}>HIPAA · NIST CSF · ISO 27001 · SOC 2 · HITRUST · Allied Healthcare</p>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{background:C.forest,padding:"1.5rem 1.75rem",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Policy Gap Analyzer</h2>
+          <p style={{fontSize:12,color:C.sageLt,margin:0}}>HIPAA · NIST CSF · ISO 27001 · SOC 2 · HITRUST · Allied Healthcare</p>
+        </div>
+        {/* ── Guide button in header ── */}
+        <button
+          onClick={() => setShowGuide(true)}
+          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:0.4,flexShrink:0}}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Guide
+        </button>
       </div>
       <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
 
@@ -228,11 +430,11 @@ export default function PolicyGapAnalyzer() {
             <style>{`.gpkpi{perspective:600px;cursor:pointer}.gpkpi-inner{position:relative;width:100%;height:86px;transform-style:preserve-3d;transition:transform 0.55s cubic-bezier(.4,0,.2,1)}.gpkpi:hover .gpkpi-inner{transform:rotateY(180deg)}.gpkpi-f,.gpkpi-b{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;text-align:center}.gpkpi-b{transform:rotateY(180deg)}`}</style>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:10}}>
               {[
-                {label:"Total Policies", val:stats.total,           color:C.ink,    bg:"#fff",    backBg:"#ece8dc", desc:"All policies in the registry across every framework and category."},
-                {label:"Coverage Score", val:`${stats.overall}%`,   color:scoreColor(stats.overall),bg:scoreBg(stats.overall),backBg:stats.overall>=80?"#86efac":stats.overall>=50?"#fde047":"#f87171",desc:"Weighted coverage score across all policies and frameworks."},
-                {label:"Exists",         val:stats.bySt["Exists"],        color:"#15803d",bg:"#dcfce7", backBg:"#86efac", desc:"Policies that are documented, current, and fully implemented."},
-                {label:"Partial",        val:stats.bySt["Partial"],       color:"#713f12",bg:"#fef08a", backBg:"#fde047", desc:"Policies that exist but are incomplete or require updating."},
-                {label:"Missing",        val:stats.bySt["Missing"],       color:"#7f1d1d",bg:"#fecaca", backBg:"#f87171", desc:"Required policies that have not yet been documented or created."},
+                {label:"Total Policies", val:stats.total,                  color:C.ink,    bg:"#fff",    backBg:"#ece8dc", desc:"All policies in the registry across every framework and category."},
+                {label:"Coverage Score", val:`${stats.overall}%`,          color:scoreColor(stats.overall),bg:scoreBg(stats.overall),backBg:stats.overall>=80?"#86efac":stats.overall>=50?"#fde047":"#f87171",desc:"Weighted coverage score across all policies and frameworks."},
+                {label:"Exists",         val:stats.bySt["Exists"],         color:"#15803d",bg:"#dcfce7", backBg:"#86efac", desc:"Policies that are documented, current, and fully implemented."},
+                {label:"Partial",        val:stats.bySt["Partial"],        color:"#713f12",bg:"#fef08a", backBg:"#fde047", desc:"Policies that exist but are incomplete or require updating."},
+                {label:"Missing",        val:stats.bySt["Missing"],        color:"#7f1d1d",bg:"#fecaca", backBg:"#f87171", desc:"Required policies that have not yet been documented or created."},
               ].map(k=>(
                 <div key={k.label} className="gpkpi">
                   <div className="gpkpi-inner">
@@ -396,7 +598,7 @@ export default function PolicyGapAnalyzer() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {modal&&(
         <div onClick={e=>{if(e.target===e.currentTarget)closeModal();}}
           style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>

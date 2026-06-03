@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 const FONTS = { sans:"system-ui,-apple-system,'Segoe UI',Arial,sans-serif", serif:"Georgia,'Times New Roman',serif" };
 
@@ -6,6 +6,7 @@ const C = {
   cream:"#f4f0e6", creamDk:"#e8e2d4", forest:"#1b2d1b",
   sage:"#3b82f6", sageLt:"#93c5fd", sagePl:"#dbeafe",
   ink:"#1a1a14", muted:"#6b6b5e", border:"rgba(26,26,20,0.1)",
+  danger:"#dc2626", dangerLt:"#fecaca",
 };
 
 const DOMAINS = [
@@ -32,16 +33,20 @@ const SCORE_LABELS = {1:"Poor",2:"Fair",3:"Adequate",4:"Good",5:"Excellent"};
 const today   = new Date().toISOString().split("T")[0];
 const daysAgo = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().split("T")[0]; };
 const nowStr  = () => new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
+
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_vendorScorecard_vendors";
+
 let nextId = 8;
 
 const SEED = [
-  { id:1, name:"Epic Systems",          category:"EHR / EMR",              contact:"vendor@epic.com",         assessedDate:daysAgo(30), notes:"Fully HIPAA-compliant EHR with SOC 2 Type II. Excellent uptime record and dedicated BAA in place.",                                           scores:{security:5,privacy:5,continuity:5,financial:5,contractual:5,operational:5} },
-  { id:2, name:"AWS GovCloud",           category:"Cloud Services",          contact:"govcloud@aws.com",        assessedDate:daysAgo(45), notes:"FedRAMP authorized. HIPAA-eligible services with comprehensive BAA and 99.99% SLA.",                                                        scores:{security:5,privacy:4,continuity:5,financial:5,contractual:4,operational:5} },
-  { id:3, name:"Meditech Expanse",       category:"EHR / EMR",              contact:"support@meditech.com",    assessedDate:daysAgo(60), notes:"HIPAA-compliant EHR with solid security posture. DR plan needs review; support response times are variable.",                               scores:{security:4,privacy:4,continuity:3,financial:4,contractual:4,operational:3} },
-  { id:4, name:"McKesson Pharmacy",      category:"Pharmacy",                contact:"compliance@mckesson.com", assessedDate:daysAgo(20), notes:"Established vendor. Recent security audit findings partially remediated. BAA is current.",                                                  scores:{security:3,privacy:4,continuity:3,financial:5,contractual:3,operational:4} },
-  { id:5, name:"BrightPath Telehealth",  category:"Telehealth",              contact:"info@brightpath.io",      assessedDate:daysAgo(10), notes:"Early-stage startup. Limited security documentation. No formal DR plan. BAA under negotiation. Requires reassessment.",                     scores:{security:2,privacy:2,continuity:2,financial:2,contractual:2,operational:3} },
-  { id:6, name:"MedBill Offshore",       category:"Billing & Revenue Cycle", contact:"ops@medbill.co",          assessedDate:daysAgo(15), notes:"Offshore billing vendor. Significant HIPAA compliance gaps. No signed BAA. Immediate remediation required.",                               scores:{security:2,privacy:1,continuity:2,financial:2,contractual:1,operational:2} },
-  { id:7, name:"LegacyDevCo",            category:"Medical Devices",         contact:"support@legacydev.com",   assessedDate:daysAgo(90), notes:"Legacy medical device maker. Devices run unsupported OS. No encryption at rest. No patch management program in place.",                    scores:{security:1,privacy:2,continuity:1,financial:2,contractual:2,operational:2} },
+  { id:1, name:"Epic Systems",         category:"EHR / EMR",              contact:"vendor@epic.com",        assessedDate:daysAgo(30), notes:"Fully HIPAA-compliant EHR with SOC 2 Type II. Excellent uptime record and dedicated BAA in place.",                                          scores:{security:5,privacy:5,continuity:5,financial:5,contractual:5,operational:5} },
+  { id:2, name:"AWS GovCloud",          category:"Cloud Services",          contact:"govcloud@aws.com",       assessedDate:daysAgo(45), notes:"FedRAMP authorized. HIPAA-eligible services with comprehensive BAA and 99.99% SLA.",                                                       scores:{security:5,privacy:4,continuity:5,financial:5,contractual:4,operational:5} },
+  { id:3, name:"Meditech Expanse",      category:"EHR / EMR",              contact:"support@meditech.com",   assessedDate:daysAgo(60), notes:"HIPAA-compliant EHR with solid security posture. DR plan needs review; support response times are variable.",                              scores:{security:4,privacy:4,continuity:3,financial:4,contractual:4,operational:3} },
+  { id:4, name:"McKesson Pharmacy",     category:"Pharmacy",                contact:"compliance@mckesson.com",assessedDate:daysAgo(20), notes:"Established vendor. Recent security audit findings partially remediated. BAA is current.",                                                 scores:{security:3,privacy:4,continuity:3,financial:5,contractual:3,operational:4} },
+  { id:5, name:"BrightPath Telehealth", category:"Telehealth",              contact:"info@brightpath.io",     assessedDate:daysAgo(10), notes:"Early-stage startup. Limited security documentation. No formal DR plan. BAA under negotiation. Requires reassessment.",                    scores:{security:2,privacy:2,continuity:2,financial:2,contractual:2,operational:3} },
+  { id:6, name:"MedBill Offshore",      category:"Billing & Revenue Cycle", contact:"ops@medbill.co",         assessedDate:daysAgo(15), notes:"Offshore billing vendor. Significant HIPAA compliance gaps. No signed BAA. Immediate remediation required.",                              scores:{security:2,privacy:1,continuity:2,financial:2,contractual:1,operational:2} },
+  { id:7, name:"LegacyDevCo",           category:"Medical Devices",         contact:"support@legacydev.com",  assessedDate:daysAgo(90), notes:"Legacy medical device maker. Devices run unsupported OS. No encryption at rest. No patch management program in place.",                   scores:{security:1,privacy:2,continuity:1,financial:2,contractual:2,operational:2} },
 ];
 
 const TierBadge = ({score}) => { const t=getTier(score); return <span style={{fontSize:11,fontWeight:700,padding:"2px 10px",borderRadius:20,background:t.bg,color:t.text,border:`0.5px solid ${t.border}`,whiteSpace:"nowrap"}}>{t.label}</span>; };
@@ -60,7 +65,6 @@ const ScoreCircle = ({score,size=48}) => {
   );
 };
 
-// Routes through Netlify function — API key lives server-side only
 async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{
     method:"POST", headers:{"Content-Type":"application/json"},
@@ -77,8 +81,161 @@ async function callAI(prompt, system) {
   return JSON.parse(raw.slice(s,e+1));
 }
 
+// ─── Guide content ────────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Vendor Risk Scorecard",
+  whatIsIt: `The Vendor Risk Scorecard is a third-party risk management tool built for healthcare organizations managing HIPAA Business Associate relationships. It scores each vendor across six weighted domains — Security Controls (30%), Data Privacy & Compliance (25%), Business Continuity (20%), Financial Stability (10%), Contractual & Legal (10%), and Operational Performance (5%) — and assigns an overall risk tier: Low, Medium, High, or Critical.
+
+This mirrors the kind of vendor due diligence your compliance or security team would conduct before signing a Business Associate Agreement (BAA), and supports ongoing monitoring across your vendor portfolio. The AI Report tab generates a narrative risk assessment for any vendor, with strengths, concerns, recommendations, and a suggested reassessment timeline — ready to download as an HTML report.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Review the Vendor Registry",
+      detail: "The Vendor Registry shows all assessed vendors sorted by risk score (lowest to highest). Each card shows the composite score circle, risk tier badge, a mini domain score bar, and assessment notes. Filter by Tier or Category to focus on specific segments — for example, all Critical Risk vendors.",
+    },
+    {
+      step: "2",
+      title: "Add or Edit a Vendor",
+      detail: "Click '+ Add Vendor' to score a new vendor. Enter the name, category, contact, and assessment date, then use the six sliders to rate each domain from 1 (Poor) to 5 (Excellent). The projected score and tier update live as you adjust sliders. Use '✦ AI Suggest' to have Claude recommend scores based on the vendor name and your notes.",
+    },
+    {
+      step: "3",
+      title: "Understand the Scoring",
+      detail: "Each domain score is weighted by its compliance importance. Security (30%) and Privacy (25%) carry the most weight because they directly affect HIPAA risk. The composite score (0–100) maps to tiers: Low Risk (75+), Medium Risk (50–74), High Risk (25–49), Critical Risk (0–24). Critical Risk vendors should be escalated immediately.",
+    },
+    {
+      step: "4",
+      title: "Review the Risk Analysis",
+      detail: "The Risk Analysis tab shows KPI cards (hover to flip), tier distribution bars, portfolio-level domain averages, and a full vendor risk ranking. Use this view for leadership briefings, audit documentation, or to identify which domain has the weakest scores across your vendor portfolio.",
+    },
+    {
+      step: "5",
+      title: "Generate an AI Vendor Report",
+      detail: "In the AI Report tab, click '✦ Generate' next to any vendor. Claude produces a tailored risk narrative including a headline assessment, strengths, risk concerns, specific recommendations, and a reassessment timeline. Download it as an HTML report to share with your legal, compliance, or procurement team.",
+    },
+  ],
+};
+
+// ─── Guide Modal ──────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#fff", borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        {/* Header */}
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:"1.4rem"}}>
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Your vendor data is automatically saved to this browser. AI-generated reports can be downloaded as standalone HTML files — ideal for including in vendor due diligence packages or audit records.
+            </p>
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all vendor records and restores the original 7 demo vendors. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function VendorScorecard() {
-  const [vendors,    setVendors]    = useState(SEED);
+
+  // ── State: load vendors from localStorage, fall back to SEED ──
+  const [vendors, setVendors] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : SEED;
+    } catch { return SEED; }
+  });
+
   const [activeTab,  setActiveTab]  = useState("registry");
   const [tierFilter, setTierFilter] = useState("All");
   const [catFilter,  setCatFilter]  = useState("All");
@@ -87,16 +244,32 @@ export default function VendorScorecard() {
   const [aiLoading,  setAiLoading]  = useState(null);
   const [aiSuggest,  setAiSuggest]  = useState(null);
   const [suggestLoad,setSuggestLoad]= useState(false);
+  const [showGuide,  setShowGuide]  = useState(false);
 
   const blankScores = Object.fromEntries(DOMAINS.map(d=>[d.key,3]));
   const blank = {name:"",category:CATEGORIES[0],contact:"",assessedDate:today,scores:blankScores,notes:""};
   const [form, setForm] = useState(blank);
+
+  // ── Persist vendors to localStorage whenever they change ──
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(vendors)); } catch {}
+  }, [vendors]);
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setVendors(SEED);
+    setAiReport(null);
+    setModal(null);
+  };
+
   const setF     = k => v => setForm(f=>({...f,[k]:v}));
   const setScore = (k,v) => setForm(f=>({...f,scores:{...f.scores,[k]:v}}));
 
   const openAdd  = () => { setForm(blank); setAiSuggest(null); setModal("add"); };
   const openEdit = v  => { setForm({name:v.name,category:v.category,contact:v.contact,assessedDate:v.assessedDate,scores:{...v.scores},notes:v.notes}); setAiSuggest(null); setModal(v); };
   const closeModal = () => { setModal(null); setAiSuggest(null); };
+
   const saveVendor = () => {
     if(!form.name.trim()) return;
     if(modal==="add") setVendors(vs=>[...vs,{...form,id:nextId++}]);
@@ -190,9 +363,34 @@ export default function VendorScorecard() {
 
   return (
     <div style={{fontFamily:FONTS.sans,background:C.cream,minHeight:400,color:C.ink}}>
-      <div style={{background:C.forest,padding:"1.5rem 1.75rem"}}>
-        <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Vendor Risk Scorecard</h2>
-        <p style={{fontSize:12,color:C.sageLt,margin:0}}>Third-Party Risk · Weighted Scoring · HIPAA BAA · Allied Healthcare</p>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{background:C.forest,padding:"1.5rem 1.75rem",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Vendor Risk Scorecard</h2>
+          <p style={{fontSize:12,color:C.sageLt,margin:0}}>Third-Party Risk · Weighted Scoring · HIPAA BAA · Allied Healthcare</p>
+        </div>
+        {/* ── Guide button ── */}
+        <button
+          onClick={() => setShowGuide(true)}
+          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:0.4,flexShrink:0}}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Guide
+        </button>
       </div>
       <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
 
@@ -393,7 +591,7 @@ export default function VendorScorecard() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {modal&&(
         <div onClick={e=>{if(e.target===e.currentTarget)closeModal();}}
           style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>

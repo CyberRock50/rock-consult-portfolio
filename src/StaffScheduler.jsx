@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 
 const FONTS={sans:"system-ui,-apple-system,'Segoe UI',Arial,sans-serif",serif:"Georgia,'Times New Roman',serif"};
-const C={cream:"#f4f0e6",creamDk:"#e8e2d4",forest:"#1b2d1b",sage:"#3b82f6",sageLt:"#93c5fd",sagePl:"#dbeafe",ink:"#1a1a14",muted:"#6b6b5e",border:"rgba(26,26,20,0.1)"};
+const C={cream:"#f4f0e6",creamDk:"#e8e2d4",forest:"#1b2d1b",sage:"#3b82f6",sageLt:"#93c5fd",sagePl:"#dbeafe",ink:"#1a1a14",muted:"#6b6b5e",border:"rgba(26,26,20,0.1)",danger:"#dc2626",dangerLt:"#fecaca"};
 const SITES=["Main Campus","North Clinic","South Clinic","East Wing","West Wing","Telehealth Hub"];
 const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const SHIFTS=["Morning","Afternoon","Night"];
@@ -21,6 +21,11 @@ const covBg   =n=>n>=TARGET?"#dcfce7":n>=5?"#fef3c7":"#fecaca";
 const initials=n=>n.split(" ").map(w=>w[0]).join("").slice(0,2);
 const nowStr  =()=>new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
 const blankForm={name:"",dept:"Clinical",role:"",site:0,shift:0,type:"FT",days:[0,1,2,3,4]};
+
+// localStorage keys — unique per tool
+const STORAGE_KEY_STAFF    = "rocklin_staffScheduler_staff";
+const STORAGE_KEY_SCHEDULE = "rocklin_staffScheduler_schedule";
+const STORAGE_KEY_SAVED_AT = "rocklin_staffScheduler_savedAt";
 
 const STAFF_SEED=[
   {id:1, name:"Sarah Chen",      dept:"Clinical",      role:"RN",             site:0,shift:0,type:"FT", days:[0,1,2,3,4]},
@@ -90,7 +95,6 @@ function detectConflict(id,sch){
   });
 }
 
-// Routes through Netlify function — API key lives server-side only
 async function callAI(prompt,system){
   const res=await fetch("/.netlify/functions/ai-proxy",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1800,system:system||"Return only valid JSON, no markdown.",messages:[{role:"user",content:prompt}]})
@@ -101,6 +105,142 @@ async function callAI(prompt,system){
   const s=raw.indexOf("{"),e=raw.lastIndexOf("}");
   if(s===-1||e===-1)throw new Error("No JSON in response");
   return JSON.parse(raw.slice(s,e+1));
+}
+
+// ─── Guide content ─────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Staff Scheduler",
+  whatIsIt: `The Staff Scheduler is a visual workforce management tool for multi-site healthcare operations. It manages 50 staff members across 6 sites (Main Campus, North Clinic, South Clinic, East Wing, West Wing, Telehealth Hub), 3 shifts (Morning, Afternoon, Night), and a full 7-day week — with a target of 7 staff per site per day.
+
+Each staff member is color-coded by department (Clinical, Administrative, IT, Executive, HR) and can be dragged between schedule cells or assigned via click mode. The tool automatically detects double-booking conflicts and gives you an undo history for safe edits. The AI Optimizer analyzes your current schedule for gaps and recommendations, while the AI Scheduler can autonomously generate a complete conflict-free weekly schedule from scratch.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Read the Schedule Grid",
+      detail: "The Schedule tab shows a grid of sites × days. In 3-Shift View, each site shows 3 rows (Morning / Afternoon / Night). Staff appear as colored initials circles — blue = Clinical, pink = Administrative, green = IT, purple = Executive, amber = HR. Red-bordered circles indicate a conflict (double-booking). Numbers in Single-Shift View show total daily coverage vs. the 7-staff target.",
+    },
+    {
+      step: "2",
+      title: "Drag & Drop or Click to Assign",
+      detail: "Drag Mode (default): grab a staff member from the left panel or from a cell and drop them into a new cell. Click Mode: click a cell to open the assignment panel, then tap a staff member to add them. Use the toggle button above the grid to switch between modes. Conflicts trigger an instant warning toast with an Undo option.",
+    },
+    {
+      step: "3",
+      title: "Manage the Roster",
+      detail: "The Roster tab shows all 50 staff with department, role, site, shift, employment type, weekly hours, and employment status. Use the status dropdown to mark staff as Active, On Leave, Inactive, or NLE (No Longer Employed). NLE permanently removes the person from the roster and all scheduled shifts.",
+    },
+    {
+      step: "4",
+      title: "Save Your Schedule",
+      detail: "Click 'Save Schedule' in the toolbar to persist your current schedule and roster to the browser. The timestamp shows when it was last saved. Your data reloads automatically on next visit. Use 'Undo' (up to 10 steps) to revert accidental changes before saving.",
+    },
+    {
+      step: "5",
+      title: "Use AI Features",
+      detail: "AI Optimizer (✦ AI Optimizer tab): analyzes your current schedule and returns a coverage score, understaffed sites, conflicts, and recommendations. AI Scheduler (✦ AI Scheduler tab): Claude autonomously builds a complete conflict-free weekly schedule for all 50 staff — review the proposed coverage and conflicts before clicking 'Apply to Schedule.'",
+    },
+  ],
+};
+
+// ─── Guide Modal ────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#fff", borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+        <div style={{padding:"1.4rem"}}>
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Click 'Save Schedule' in the toolbar to persist your changes to this browser. Data is not saved automatically — save before closing the tab to avoid losing manual edits.
+            </p>
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all saved schedule and roster data, restoring the original 50 demo staff and default schedule. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ── AutoScheduler sub-component ──
@@ -161,7 +301,6 @@ function AutoScheduler({staffList,onApply}){
           </div>
         </div>
       </div>
-
       {phase==="loading"&&(
         <div style={{background:"#fff",border:`0.5px solid ${C.border}`,borderRadius:10,padding:"2.5rem",textAlign:"center"}}>
           <div style={{width:44,height:44,border:`3px solid ${C.sagePl}`,borderTopColor:C.sage,borderRadius:"50%",margin:"0 auto 16px",animation:"spin 0.8s linear infinite"}}/>
@@ -170,9 +309,7 @@ function AutoScheduler({staffList,onApply}){
           <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
         </div>
       )}
-
       {error&&<div style={{background:"#fecaca",border:"0.5px solid #ef4444",borderRadius:10,padding:"1rem"}}><p style={{fontSize:13,color:"#7f1d1d",margin:0}}>{error}</p></div>}
-
       {phase==="applied"&&(
         <div style={{background:"#dcfce7",border:"0.5px solid #86efac",borderRadius:10,padding:"1.25rem",display:"flex",alignItems:"center",gap:14}}>
           <div style={{width:44,height:44,borderRadius:"50%",background:"#16a34a",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontSize:20,color:"#fff"}}>✓</span></div>
@@ -182,7 +319,6 @@ function AutoScheduler({staffList,onApply}){
           </div>
         </div>
       )}
-
       {report&&(phase==="review"||phase==="applied")&&(
         <>
           <div style={{background:"#fff",border:`0.5px solid ${C.border}`,borderRadius:10,padding:"1.25rem"}}>
@@ -249,6 +385,7 @@ export default function StaffScheduler(){
   const [aiReport,   setAiReport]   = useState(null);
   const [aiLoading,  setAiLoading]  = useState(false);
   const [aiError,    setAiError]    = useState(null);
+  const [showGuide,  setShowGuide]  = useState(false); // ← Guide modal state
 
   const dragRef   = useRef({d:null,t:null});
   const schedRef  = useRef(schedule);
@@ -259,11 +396,11 @@ export default function StaffScheduler(){
   useEffect(()=>{schedRef.current=schedule;},[schedule]);
   useEffect(()=>{staffRef.current=staffList;},[staffList]);
 
-  // localStorage persistence (replaces window.storage artifact API)
+  // ── Load from localStorage on mount ──
   useEffect(()=>{
-    try{const v=localStorage.getItem("ss_staff");if(v){const l=JSON.parse(v);setStaffList(l);staffRef.current=l;nextIdRef.current=Math.max(...l.map(s=>s.id),50)+1;}}catch(e){}
-    try{const v=localStorage.getItem("ss_schedule");if(v){const l=JSON.parse(v);setSchedule(l);schedRef.current=l;}}catch(e){}
-    try{const v=localStorage.getItem("ss_saved_at");if(v)setSavedAt(v);}catch(e){}
+    try{const v=localStorage.getItem(STORAGE_KEY_STAFF);if(v){const l=JSON.parse(v);setStaffList(l);staffRef.current=l;nextIdRef.current=Math.max(...l.map(s=>s.id),50)+1;}}catch(e){}
+    try{const v=localStorage.getItem(STORAGE_KEY_SCHEDULE);if(v){const l=JSON.parse(v);setSchedule(l);schedRef.current=l;}}catch(e){}
+    try{const v=localStorage.getItem(STORAGE_KEY_SAVED_AT);if(v)setSavedAt(v);}catch(e){}
   },[]);
 
   useEffect(()=>{
@@ -307,10 +444,30 @@ export default function StaffScheduler(){
 
   const saveAll=()=>{
     const ts=nowStr();
-    try{localStorage.setItem("ss_schedule",JSON.stringify(schedRef.current));}catch(e){}
-    try{localStorage.setItem("ss_staff",JSON.stringify(staffRef.current));}catch(e){}
-    try{localStorage.setItem("ss_saved_at",ts);}catch(e){}
+    try{localStorage.setItem(STORAGE_KEY_SCHEDULE,JSON.stringify(schedRef.current));}catch(e){}
+    try{localStorage.setItem(STORAGE_KEY_STAFF,JSON.stringify(staffRef.current));}catch(e){}
+    try{localStorage.setItem(STORAGE_KEY_SAVED_AT,ts);}catch(e){}
     setSavedAt(ts); setSaveFlash(true); setTimeout(()=>setSaveFlash(false),2000);
+  };
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY_STAFF);
+      localStorage.removeItem(STORAGE_KEY_SCHEDULE);
+      localStorage.removeItem(STORAGE_KEY_SAVED_AT);
+    } catch {}
+    const seedSched = buildSchedule(STAFF_SEED);
+    setStaffList(STAFF_SEED);
+    staffRef.current = STAFF_SEED;
+    setSchedule(seedSched);
+    schedRef.current = seedSched;
+    setStaffStatus(Object.fromEntries(STAFF_SEED.map(s=>[s.id,"Active"])));
+    histRef.current = [];
+    setHistLen(0);
+    setSavedAt(null);
+    nextIdRef.current = 51;
+    setAiReport(null);
   };
 
   const removeFromCell=(id,key)=>setSchedule(s=>({...s,[key]:(s[key]||[]).filter(i=>i!==id)}));
@@ -398,10 +555,35 @@ export default function StaffScheduler(){
 
   return(
     <div style={{fontFamily:FONTS.sans,background:C.cream,color:C.ink,display:"flex",flexDirection:"column",minHeight:"80vh"}}>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
       <div style={{flexShrink:0}}>
-        <div style={{background:C.forest,padding:"0.9rem 1.5rem"}}>
-          <h2 style={{fontFamily:FONTS.serif,fontSize:20,fontWeight:400,color:C.cream,margin:"0 0 2px"}}>Staff Scheduler</h2>
-          <p style={{fontSize:11,color:C.sageLt,margin:0}}>{staffList.length} Staff · 6 Sites · 3-Shift Weekly Coverage · Allied Healthcare</p>
+        {/* Header */}
+        <div style={{background:C.forest,padding:"0.9rem 1.5rem",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+          <div>
+            <h2 style={{fontFamily:FONTS.serif,fontSize:20,fontWeight:400,color:C.cream,margin:"0 0 2px"}}>Staff Scheduler</h2>
+            <p style={{fontSize:11,color:C.sageLt,margin:0}}>{staffList.length} Staff · 6 Sites · 3-Shift Weekly Coverage · Allied Healthcare</p>
+          </div>
+          {/* ── Guide button ── */}
+          <button
+            onClick={() => setShowGuide(true)}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:11,fontWeight:600,letterSpacing:0.4,flexShrink:0,alignSelf:"flex-start"}}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+            onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+            Guide
+          </button>
         </div>
         <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
         <div style={{background:C.cream,borderBottom:`0.5px solid ${C.border}`,padding:"8px 1.5rem",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>

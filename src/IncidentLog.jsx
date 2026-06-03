@@ -6,6 +6,7 @@ const C = {
   cream:"#f4f0e6", creamDk:"#e8e2d4", forest:"#1b2d1b",
   sage:"#3b82f6", sageLt:"#93c5fd", sagePl:"#dbeafe",
   ink:"#1a1a14", muted:"#6b6b5e", border:"rgba(26,26,20,0.1)",
+  danger:"#dc2626", dangerLt:"#fecaca",
 };
 
 const SEVERITIES = ["Critical","High","Medium","Low"];
@@ -40,19 +41,22 @@ const STATUS_META = {
 };
 const HIPAA_CATS = ["PHI Breach","Ransomware","Equipment Loss","Insider Threat","Unauthorized Access"];
 
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_incidentLog_incidents";
+
 let nextId = 9;
 const today = new Date().toISOString().split("T")[0];
 const daysAgo = n => { const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().split("T")[0]; };
 
 const SEED = [
-  { id:1, title:"Ransomware Attack on EHR System",       description:"Crypto-ransomware detected on three clinical workstations accessing the primary EHR. Systems encrypted and isolated. Clinical staff reverted to paper-based workflows.",                                                          severity:"Critical", category:"Ransomware",           status:"Investigating", assignedTo:"James Okoye",   affectedSystems:"EHR Platform, Clinical Workstations x3",    dateDetected:daysAgo(2),  dateResolved:"",        hipaa:true,  playbook:null },
-  { id:2, title:"PHI Exposed via Unsecured Email",        description:"Employee sent a spreadsheet containing 340 patient records including names, DOB, and diagnoses to an external vendor using personal email without encryption.",                                                                severity:"High",     category:"PHI Breach",           status:"Contained",    assignedTo:"Sandra Reyes",  affectedSystems:"Email Server, Patient Records Database",     dateDetected:daysAgo(5),  dateResolved:"",        hipaa:true,  playbook:null },
-  { id:3, title:"Unauthorized Access to Patient Records", description:"Audit log review revealed a contractor account accessed 87 patient records outside their authorized scope over a 3-week period. No exfiltration confirmed.",                                                                  severity:"High",     category:"Unauthorized Access",  status:"Eradication",  assignedTo:"Marcus Lin",    affectedSystems:"Patient Records Portal",                     dateDetected:daysAgo(10), dateResolved:"",        hipaa:true,  playbook:null },
-  { id:4, title:"Phishing Campaign Targeting Clinical Staff", description:"Mass phishing email impersonating IT department sent to 200+ staff. 12 employees clicked the link; 3 entered credentials. MFA blocked account takeover in all cases.",                                               severity:"Medium",   category:"Phishing",             status:"Recovery",     assignedTo:"Priya Nair",    affectedSystems:"Email, Staff Accounts",                      dateDetected:daysAgo(14), dateResolved:"",        hipaa:false, playbook:null },
-  { id:5, title:"Encrypted Laptop Lost in Transit",       description:"Clinical coordinator reported a work laptop containing cached patient appointment data lost during travel. Device was encrypted with BitLocker; remote wipe initiated.",                                                      severity:"Medium",   category:"Equipment Loss",       status:"Closed",       assignedTo:"Sandra Reyes",  affectedSystems:"Endpoint — Laptop (Asset #4421)",            dateDetected:daysAgo(21), dateResolved:daysAgo(18), hipaa:true,  playbook:null },
-  { id:6, title:"Billing System Outage — 6 Hours",        description:"Unplanned outage of the billing platform due to a failed patch deployment. Revenue cycle operations suspended for 6 hours. No data loss confirmed.",                                                                       severity:"Medium",   category:"System Outage",        status:"Closed",       assignedTo:"James Okoye",   affectedSystems:"Billing Platform, Payment Gateway",          dateDetected:daysAgo(30), dateResolved:daysAgo(29), hipaa:false, playbook:null },
-  { id:7, title:"Policy Violation — Unauthorized Device", description:"Employee connected a personal USB drive to a clinical workstation in violation of acceptable use policy. Device scanned; no malware or data transfer detected.",                                                            severity:"Low",      category:"Policy Violation",     status:"Closed",       assignedTo:"Marcus Lin",    affectedSystems:"Clinical Workstation #07",                   dateDetected:daysAgo(45), dateResolved:daysAgo(44), hipaa:false, playbook:null },
-  { id:8, title:"Suspicious Insider Data Access Pattern", description:"DLP system flagged a privileged user downloading an unusually large volume of patient records outside business hours over 4 consecutive nights. Investigation ongoing.",                                                    severity:"High",     category:"Insider Threat",       status:"Investigating", assignedTo:"Priya Nair",    affectedSystems:"Patient Records DB, DLP System",             dateDetected:daysAgo(3),  dateResolved:"",        hipaa:true,  playbook:null },
+  { id:1, title:"Ransomware Attack on EHR System",           description:"Crypto-ransomware detected on three clinical workstations accessing the primary EHR. Systems encrypted and isolated. Clinical staff reverted to paper-based workflows.",                               severity:"Critical", category:"Ransomware",           status:"Investigating", assignedTo:"James Okoye",  affectedSystems:"EHR Platform, Clinical Workstations x3",  dateDetected:daysAgo(2),  dateResolved:"",        hipaa:true,  playbook:null },
+  { id:2, title:"PHI Exposed via Unsecured Email",            description:"Employee sent a spreadsheet containing 340 patient records including names, DOB, and diagnoses to an external vendor using personal email without encryption.",                                        severity:"High",     category:"PHI Breach",           status:"Contained",    assignedTo:"Sandra Reyes", affectedSystems:"Email Server, Patient Records Database",   dateDetected:daysAgo(5),  dateResolved:"",        hipaa:true,  playbook:null },
+  { id:3, title:"Unauthorized Access to Patient Records",     description:"Audit log review revealed a contractor account accessed 87 patient records outside their authorized scope over a 3-week period. No exfiltration confirmed.",                                          severity:"High",     category:"Unauthorized Access",  status:"Eradication",  assignedTo:"Marcus Lin",   affectedSystems:"Patient Records Portal",                   dateDetected:daysAgo(10), dateResolved:"",        hipaa:true,  playbook:null },
+  { id:4, title:"Phishing Campaign Targeting Clinical Staff",  description:"Mass phishing email impersonating IT department sent to 200+ staff. 12 employees clicked the link; 3 entered credentials. MFA blocked account takeover in all cases.",                            severity:"Medium",   category:"Phishing",             status:"Recovery",     assignedTo:"Priya Nair",   affectedSystems:"Email, Staff Accounts",                    dateDetected:daysAgo(14), dateResolved:"",        hipaa:false, playbook:null },
+  { id:5, title:"Encrypted Laptop Lost in Transit",           description:"Clinical coordinator reported a work laptop containing cached patient appointment data lost during travel. Device was encrypted with BitLocker; remote wipe initiated.",                             severity:"Medium",   category:"Equipment Loss",       status:"Closed",       assignedTo:"Sandra Reyes", affectedSystems:"Endpoint — Laptop (Asset #4421)",          dateDetected:daysAgo(21), dateResolved:daysAgo(18), hipaa:true,  playbook:null },
+  { id:6, title:"Billing System Outage — 6 Hours",            description:"Unplanned outage of the billing platform due to a failed patch deployment. Revenue cycle operations suspended for 6 hours. No data loss confirmed.",                                                severity:"Medium",   category:"System Outage",        status:"Closed",       assignedTo:"James Okoye",  affectedSystems:"Billing Platform, Payment Gateway",        dateDetected:daysAgo(30), dateResolved:daysAgo(29), hipaa:false, playbook:null },
+  { id:7, title:"Policy Violation — Unauthorized Device",     description:"Employee connected a personal USB drive to a clinical workstation in violation of acceptable use policy. Device scanned; no malware or data transfer detected.",                                     severity:"Low",      category:"Policy Violation",     status:"Closed",       assignedTo:"Marcus Lin",   affectedSystems:"Clinical Workstation #07",                 dateDetected:daysAgo(45), dateResolved:daysAgo(44), hipaa:false, playbook:null },
+  { id:8, title:"Suspicious Insider Data Access Pattern",     description:"DLP system flagged a privileged user downloading an unusually large volume of patient records outside business hours over 4 consecutive nights. Investigation ongoing.",                            severity:"High",     category:"Insider Threat",       status:"Investigating", assignedTo:"Priya Nair",   affectedSystems:"Patient Records DB, DLP System",           dateDetected:daysAgo(3),  dateResolved:"",        hipaa:true,  playbook:null },
 ];
 
 const daysBetween = (d1,d2) => {
@@ -61,7 +65,6 @@ const daysBetween = (d1,d2) => {
 };
 const nowStr = () => new Date().toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
 
-// Routes through Netlify function — API key lives server-side only
 async function callAI(prompt, system) {
   const res = await fetch("/.netlify/functions/ai-proxy",{
     method:"POST", headers:{"Content-Type":"application/json"},
@@ -102,8 +105,167 @@ function PhaseBar({status}) {
   );
 }
 
+// ─── Guide content ────────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Incident Response Log",
+  whatIsIt: `The Incident Response Log is a healthcare-focused security incident management tool built around the NIST incident response lifecycle and HIPAA breach notification requirements. It gives your team a structured place to log, track, triage, and respond to security events — from a lost laptop to a ransomware attack.
+
+Each incident is tracked through six lifecycle phases (Open → Investigating → Contained → Eradication → Recovery → Closed), classified by severity and category, and automatically flagged when HIPAA breach notification may be required. The Dashboard gives you a live operational picture, and the AI Playbook tab generates a tailored step-by-step response guide for any incident in your log — including specific HIPAA notification actions when applicable.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Log a New Incident",
+      detail: "Click '+ Log Incident' to open the entry form. Fill in the title, description, severity, category, assigned responder, affected systems, and detection date. Use the '✦ AI Triage' button to have Claude automatically classify the severity, category, and HIPAA status based on your description.",
+    },
+    {
+      step: "2",
+      title: "Track Lifecycle Progress",
+      detail: "Each incident card shows a phase progress bar (Detection → Closed). Use the status dropdown on the card to advance the incident through phases as your response progresses. Setting status to 'Closed' automatically stamps the resolution date.",
+    },
+    {
+      step: "3",
+      title: "Identify HIPAA Reportable Incidents",
+      detail: "Incidents in categories like PHI Breach, Ransomware, or Unauthorized Access are automatically flagged with a HIPAA badge. You can also manually toggle the HIPAA flag in the entry form. These flags are critical — HIPAA requires breach notification to affected individuals within 60 days of discovery.",
+    },
+    {
+      step: "4",
+      title: "Review the Dashboard",
+      detail: "The Dashboard tab shows KPI cards (hover to flip for definitions), severity distribution bars, lifecycle phase counts, and a recent incidents timeline. Use this for daily stand-ups, leadership briefings, or audit documentation.",
+    },
+    {
+      step: "5",
+      title: "Generate an AI Playbook",
+      detail: "In the AI Playbook tab, click '✦ Generate' next to any incident. Claude will produce a tailored response playbook with phase-by-phase steps, HIPAA notification requirements (if applicable), communication tips, and lessons learned prompts. Download it as an HTML file to share with your response team.",
+    },
+  ],
+};
+
+// ─── Guide Modal ──────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#fff", borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        {/* Header */}
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:"1.4rem"}}>
+
+          {/* What Is It For */}
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+
+          {/* How To Use It */}
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tip */}
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Your incident data is automatically saved to this browser. AI-generated playbooks can be downloaded as standalone HTML files for distribution to your response team or inclusion in post-incident documentation.
+            </p>
+          </div>
+
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+
+          {/* Clear All Data */}
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all logged incidents and restores the original 8 demo incidents. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function IncidentLog() {
-  const [incidents, setIncidents] = useState(SEED);
+
+  // ── State: load incidents from localStorage, fall back to SEED ──
+  const [incidents, setIncidents] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : SEED;
+    } catch { return SEED; }
+  });
+
   const [activeTab, setActiveTab] = useState("log");
   const [sevFilter, setSevFilter] = useState("All");
   const [catFilter, setCatFilter] = useState("All");
@@ -111,11 +273,25 @@ export default function IncidentLog() {
   const [modal,     setModal]     = useState(null);
   const [playbook,  setPlaybook]  = useState(null);
   const [pbLoading, setPbLoading] = useState(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const blank = { title:"", description:"", severity:SEVERITIES[0], category:CATEGORIES[0], status:PHASES[0], assignedTo:"", affectedSystems:"", dateDetected:today, dateResolved:"", hipaa:false };
   const [form,       setForm]       = useState(blank);
   const [triage,     setTriage]     = useState(null);
   const [triageLoad, setTriageLoad] = useState(false);
+
+  // ── Persist incidents to localStorage whenever they change ──
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(incidents)); } catch {}
+  }, [incidents]);
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setIncidents(SEED);
+    setPlaybook(null);
+    setModal(null);
+  };
 
   const setF = k => v => setForm(f=>({...f,[k]:v}));
 
@@ -230,9 +406,34 @@ export default function IncidentLog() {
 
   return (
     <div style={{fontFamily:FONTS.sans,background:C.cream,minHeight:400,color:C.ink}}>
-      <div style={{background:C.forest,padding:"1.5rem 1.75rem"}}>
-        <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Incident Response Log</h2>
-        <p style={{fontSize:12,color:C.sageLt,margin:0}}>NIST IR · HIPAA Breach Notification · Healthcare Security Incidents</p>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
+      {/* Header */}
+      <div style={{background:C.forest,padding:"1.5rem 1.75rem",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <div>
+          <h2 style={{fontFamily:FONTS.serif,fontSize:22,fontWeight:400,color:C.cream,margin:"0 0 4px"}}>Incident Response Log</h2>
+          <p style={{fontSize:12,color:C.sageLt,margin:0}}>NIST IR · HIPAA Breach Notification · Healthcare Security Incidents</p>
+        </div>
+        {/* ── Guide button in header ── */}
+        <button
+          onClick={() => setShowGuide(true)}
+          style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:12,fontWeight:600,letterSpacing:0.4,flexShrink:0}}
+          onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+          onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Guide
+        </button>
       </div>
       <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
 
@@ -313,10 +514,10 @@ export default function IncidentLog() {
             <style>{`.kpi-card{perspective:600px;cursor:pointer}.kpi-inner{position:relative;width:100%;height:90px;transform-style:preserve-3d;transition:transform 0.55s cubic-bezier(.4,0,.2,1)}.kpi-card:hover .kpi-inner{transform:rotateY(180deg)}.kpi-front,.kpi-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;text-align:center}.kpi-back{transform:rotateY(180deg)}`}</style>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10}}>
               {[
-                {label:"Total",            val:stats.total,   color:C.ink,    bg:"#fff",    backBg:"#f0f0e8", desc:"All incidents logged across every severity level and lifecycle stage."},
-                {label:"Open",             val:stats.open,    color:"#dc2626",bg:"#fecaca", backBg:"#fda4af", desc:"Active incidents not yet resolved — requiring immediate attention."},
-                {label:"Closed",           val:stats.closed,  color:"#15803d",bg:"#dcfce7", backBg:"#86efac", desc:"Fully resolved incidents that have completed the response lifecycle."},
-                {label:"HIPAA Reportable", val:stats.hipaa,   color:"#9f1239",bg:"#ffe4e6", backBg:"#fecdd3", desc:"Incidents flagged as potential HIPAA breaches requiring notification review."},
+                {label:"Total",             val:stats.total,  color:C.ink,    bg:"#fff",    backBg:"#f0f0e8", desc:"All incidents logged across every severity level and lifecycle stage."},
+                {label:"Open",              val:stats.open,   color:"#dc2626",bg:"#fecaca", backBg:"#fda4af", desc:"Active incidents not yet resolved — requiring immediate attention."},
+                {label:"Closed",            val:stats.closed, color:"#15803d",bg:"#dcfce7", backBg:"#86efac", desc:"Fully resolved incidents that have completed the response lifecycle."},
+                {label:"HIPAA Reportable",  val:stats.hipaa,  color:"#9f1239",bg:"#ffe4e6", backBg:"#fecdd3", desc:"Incidents flagged as potential HIPAA breaches requiring notification review."},
                 {label:"Avg. Days to Resolve",val:stats.avgDays!==null?`${stats.avgDays}d`:"—",color:"#1e40af",bg:C.sagePl,backBg:"#93c5fd",desc:"Mean time from detection to closure across all resolved incidents."},
               ].map(k=>(
                 <div key={k.label} className="kpi-card">
@@ -465,7 +666,7 @@ export default function IncidentLog() {
         )}
       </div>
 
-      {/* Modal */}
+      {/* Add/Edit Modal */}
       {modal && (
         <div onClick={e=>{if(e.target===e.currentTarget)closeModal();}}
           style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>

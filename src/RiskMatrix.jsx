@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
   ink:      "#1a1a14",
   muted:    "#6b6b5e",
@@ -8,8 +9,14 @@ const T = {
   border:   "rgba(26,26,20,0.2)",
   borderLt: "rgba(26,26,20,0.1)",
   font:     "system-ui,-apple-system,'Segoe UI',Arial,sans-serif",
+  green:    "#1b2d1b",
+  greenLt:  "#2d4a2d",
+  blue:     "#93c5fd",
+  danger:   "#dc2626",
+  dangerLt: "#fecaca",
 };
 
+// ─── Static data ──────────────────────────────────────────────────────────────
 const LIKELIHOOD = ["Rare","Unlikely","Possible","Likely","Almost Certain"];
 const IMPACT     = ["Negligible","Minor","Moderate","Major","Catastrophic"];
 const CATEGORIES = ["Patient Safety","Medication","Infection Control","Staffing","Equipment","Documentation","Compliance","Financial"];
@@ -25,6 +32,9 @@ const getSev   = (l,i) => SEVERITY.find(s => (l+1)*(i+1) >= s.min) || SEVERITY[3
 const getScore = (l,i) => (l+1)*(i+1);
 const cellKey  = (l,i) => `${l},${i}`;
 
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_riskMatrix_risks";
+
 const SEED = {
   "4,4": [{ text:"Surgical site infection due to lapses in sterile field protocol",     category:"Infection Control" }],
   "4,3": [{ text:"Critical medication error during high-acuity patient handoff",        category:"Medication"        }],
@@ -37,13 +47,243 @@ const SEED = {
   "1,1": [{ text:"Minor scheduling conflict causing brief appointment delays",         category:"Staffing"          }],
 };
 
+// ─── Guide content ────────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Healthcare Risk Matrix",
+  whatIsIt: `The Healthcare Risk Matrix is a visual risk assessment tool designed for clinical and compliance teams. It maps identified risks across two dimensions — Likelihood (how probable the risk is) and Impact (how severe the consequences would be if it occurred) — and automatically calculates a risk score for each entry.
+
+Each cell on the 5×5 grid is color-coded by severity: Critical, High, Medium, or Low. This gives your team an at-a-glance view of where the greatest threats to patient safety, compliance, and operations are concentrated — the same structured approach used in Joint Commission readiness reviews and HIPAA risk assessments.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Add a Risk",
+      detail: "Click any cell on the matrix grid. A panel will appear on the right where you can describe the risk and assign it a category (e.g., Patient Safety, Medication, Compliance). The cell's position determines the score — higher row = higher likelihood, further right = higher impact.",
+    },
+    {
+      step: "2",
+      title: "Review the Score",
+      detail: "Each risk is automatically scored by multiplying its Likelihood (1–5) and Impact (1–5) values. Scores of 15–25 are Critical, 10–14 are High, 5–9 are Medium, and 1–4 are Low. These thresholds align with standard healthcare risk management frameworks.",
+    },
+    {
+      step: "3",
+      title: "Edit or Remove Risks",
+      detail: "In the Risk Log panel, use the pencil (✎) icon to edit an existing entry or the (✕) icon to delete it. Clicking a matrix cell that already has risks will let you add additional entries to that same score position.",
+    },
+    {
+      step: "4",
+      title: "Filter the Risk Log",
+      detail: "Use the Severity and Category dropdowns in the Risk Log section to filter your view. This is especially useful during audits or department-level reviews when you need to isolate specific risk types — for example, all Critical Compliance risks.",
+    },
+    {
+      step: "5",
+      title: "Review the Summary",
+      detail: "The Risk Summary panel shows a live count of risks at each severity level and a total. Use this as your executive snapshot — it gives leadership and compliance officers a quick read on the current risk posture without drilling into individual entries.",
+    },
+  ],
+};
+
+// ─── Guide Modal ──────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      // First click — ask for confirmation
+      setConfirmClear(true);
+    } else {
+      // Second click — execute clear
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1000,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem",
+        backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:T.white,
+          borderRadius:14,
+          width:"100%",
+          maxWidth:580,
+          maxHeight:"88vh",
+          overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:T.font,
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          background:T.green,
+          borderRadius:"14px 14px 0 0",
+          padding:"1.1rem 1.4rem",
+          display:"flex", justifyContent:"space-between", alignItems:"center",
+        }}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:T.blue, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:T.white}}>{GUIDE.title}</h2>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer",
+              color:T.white, fontSize:18, borderRadius:8,
+              width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center",
+              lineHeight:1, flexShrink:0,
+            }}
+          >✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{padding:"1.4rem"}}>
+
+          {/* What Is It For */}
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:T.green, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:T.green, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:T.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div style={{borderTop:`1px solid ${T.border}`, margin:"0 0 1.4rem"}}/>
+
+          {/* How To Use It */}
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:T.blue, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:T.green, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{
+                    width:26, height:26, borderRadius:"50%",
+                    background:T.green, color:T.white,
+                    fontSize:12, fontWeight:700,
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    flexShrink:0, marginTop:1,
+                  }}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:T.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:T.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tip */}
+          <div style={{
+            marginTop:"1.4rem", padding:"0.75rem 1rem",
+            background:T.cream, borderRadius:8,
+            borderLeft:`3px solid ${T.blue}`,
+          }}>
+            <p style={{margin:0, fontSize:11, color:T.muted, lineHeight:1.6}}>
+              <strong style={{color:T.ink}}>Tip:</strong> Your risk data is automatically saved to this browser. For audit-ready documentation, export or record finalized entries in your organization's formal risk register.
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div style={{borderTop:`1px solid ${T.border}`, margin:"1.4rem 0 1.1rem"}}/>
+
+          {/* Clear All Data */}
+          <div style={{
+            padding:"0.9rem 1rem",
+            background: confirmClear ? T.dangerLt : "#fafaf8",
+            borderRadius:8,
+            border:`1px solid ${confirmClear ? T.danger : T.border}`,
+            transition:"all 0.2s",
+          }}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? T.danger : T.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:T.muted, lineHeight:1.5}}>
+              Clears all saved risk entries and restores the original demo data. Use this to reset for a new client or clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button
+                onClick={handleClear}
+                style={{
+                  fontSize:12, fontWeight:600,
+                  padding:"6px 14px", borderRadius:7,
+                  background: confirmClear ? T.danger : "none",
+                  color: confirmClear ? T.white : T.danger,
+                  border:`1px solid ${T.danger}`,
+                  cursor:"pointer",
+                }}
+              >
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button
+                  onClick={() => setConfirmClear(false)}
+                  style={{
+                    fontSize:12, padding:"6px 14px", borderRadius:7,
+                    background:"none", color:T.muted,
+                    border:`1px solid ${T.border}`, cursor:"pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 export default function RiskMatrix() {
-  const [risks,     setRisks]     = useState(SEED);
-  const [form,      setForm]      = useState(null);
-  const [draft,     setDraft]     = useState("");
-  const [draftCat,  setDraftCat]  = useState(CATEGORIES[0]);
-  const [sevFilter, setSevFilter] = useState("All");
-  const [catFilter, setCatFilter] = useState("All");
+
+  // ── State: load from localStorage on first render, fall back to SEED ──
+  const [risks, setRisks] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : SEED;
+    } catch {
+      return SEED;
+    }
+  });
+
+  const [form,       setForm]       = useState(null);
+  const [draft,      setDraft]      = useState("");
+  const [draftCat,   setDraftCat]   = useState(CATEGORIES[0]);
+  const [sevFilter,  setSevFilter]  = useState("All");
+  const [catFilter,  setCatFilter]  = useState("All");
+  const [showGuide,  setShowGuide]  = useState(false);
+
+  // ── Persist risks to localStorage whenever they change ──
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(risks));
+    } catch {
+      // localStorage unavailable — fail silently
+    }
+  }, [risks]);
+
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setRisks(SEED);
+    setForm(null);
+  };
 
   const openAdd  = (l,i) => { setForm({l,i}); setDraft(""); setDraftCat(CATEGORIES[0]); };
   const openEdit = (l,i,idx) => {
@@ -103,6 +343,38 @@ export default function RiskMatrix() {
 
   return (
     <div style={{padding:"1.5rem 2rem", fontFamily:T.font, color:T.ink}}>
+
+      {/* ── Guide button ── */}
+      <div style={{display:"flex", justifyContent:"flex-end", marginBottom:"0.85rem"}}>
+        <button
+          onClick={() => setShowGuide(true)}
+          style={{
+            display:"flex", alignItems:"center", gap:6,
+            padding:"6px 14px", borderRadius:8,
+            background:T.green, color:T.white,
+            border:"none", cursor:"pointer",
+            fontSize:12, fontWeight:600, letterSpacing:0.4,
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = T.greenLt}
+          onMouseLeave={e => e.currentTarget.style.background = T.green}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Guide
+        </button>
+      </div>
+
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
+      {/* ── Existing layout (100% unchanged) ── */}
       <div style={{display:"flex",gap:"1.5rem",alignItems:"flex-start",flexWrap:"wrap"}}>
 
         {/* Matrix */}

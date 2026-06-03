@@ -5,6 +5,7 @@ const C = {
   cream:"#f4f0e6", creamDk:"#e8e2d4", forest:"#1b2d1b",
   sage:"#3b82f6", sageLt:"#93c5fd", sagePl:"#dbeafe",
   ink:"#1a1a14", muted:"#6b6b5e", border:"rgba(26,26,20,0.1)", white:"#ffffff",
+  danger:"#dc2626", dangerLt:"#fecaca",
 };
 
 const SHIFT_META = {
@@ -25,6 +26,9 @@ const ST_META   = {
   "Not In":      { bg:"#f1f5f9", brd:"#94a3b8", txt:"#475569", dot:"#94a3b8" },
   Completed:     { bg:"#dbeafe", brd:"#93c5fd", txt:"#1e40af", dot:"#3b82f6" },
 };
+
+// localStorage key — unique per tool
+const STORAGE_KEY = "rocklin_staffAttendance_records";
 
 // ── Time helpers ──────────────────────────────────────────────────────────────
 const toMin   = t => { if(!t) return null; const[h,m]=t.split(":").map(Number); return h*60+m; };
@@ -83,7 +87,6 @@ const STAFF_SEED = [
 const buildSeedRecords = () => {
   const t=todayStr(), y=yestStr(); let id=1;
   return [
-    // Today — Morning shift (currently active)
     {id:id++,staffId:1, date:t,clockIn:"07:03",clockOut:null,   breaks:[],                           notes:""},
     {id:id++,staffId:2, date:t,clockIn:"07:48",clockOut:null,   breaks:[],                           notes:""},
     {id:id++,staffId:3, date:t,clockIn:"07:01",clockOut:null,   breaks:[{start:"10:00",end:null}],    notes:""},
@@ -91,15 +94,12 @@ const buildSeedRecords = () => {
     {id:id++,staffId:10,date:t,clockIn:"08:45",clockOut:null,   breaks:[],                           notes:""},
     {id:id++,staffId:11,date:t,clockIn:"07:02",clockOut:null,   breaks:[{start:"09:30",end:"09:45"}],notes:""},
     {id:id++,staffId:12,date:t,clockIn:"07:25",clockOut:null,   breaks:[],                           notes:""},
-    // staffId 13 (Aisha Johnson) — absent today, no record
     {id:id++,staffId:15,date:t,clockIn:"07:00",clockOut:null,   breaks:[],                           notes:""},
     {id:id++,staffId:16,date:t,clockIn:"07:12",clockOut:null,   breaks:[],                           notes:""},
     {id:id++,staffId:20,date:t,clockIn:"07:08",clockOut:null,   breaks:[],                           notes:""},
-    // Today — Night shift (completed from overnight)
     {id:id++,staffId:8, date:t,clockIn:"23:05",clockOut:"07:15",breaks:[{start:"02:00",end:"02:30"}], notes:""},
     {id:id++,staffId:9, date:t,clockIn:"22:58",clockOut:"07:02",breaks:[{start:"03:00",end:"03:25"}], notes:""},
     {id:id++,staffId:19,date:t,clockIn:"23:10",clockOut:"07:30",breaks:[{start:"01:30",end:"02:00"}], notes:""},
-    // Yesterday — for AI analysis history
     {id:id++,staffId:1, date:y,clockIn:"07:01",clockOut:"15:05",breaks:[{start:"11:00",end:"11:30"}], notes:""},
     {id:id++,staffId:2, date:y,clockIn:"07:55",clockOut:"15:10",breaks:[{start:"12:00",end:"12:30"}], notes:""},
     {id:id++,staffId:3, date:y,clockIn:"07:00",clockOut:"15:00",breaks:[{start:"10:30",end:"11:00"}], notes:""},
@@ -113,7 +113,6 @@ const buildSeedRecords = () => {
   ];
 };
 
-// ── AI proxy ──────────────────────────────────────────────────────────────────
 async function callAI(prompt, system) {
   const res=await fetch("/.netlify/functions/ai-proxy",{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1200,
@@ -128,8 +127,143 @@ async function callAI(prompt, system) {
   return JSON.parse(raw.slice(s,e+1));
 }
 
-// ── Atoms ─────────────────────────────────────────────────────────────────────
 const StBadge = ({s}) => { const m=ST_META[s]||ST_META["Not In"]; return <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:m.bg,color:m.txt,border:`0.5px solid ${m.brd}`,whiteSpace:"nowrap"}}>{s}</span>; };
+
+// ── Guide content ─────────────────────────────────────────────────────────────
+const GUIDE = {
+  title: "Staff Attendance",
+  whatIsIt: `The Staff Attendance tool is a real-time clock-in / clock-out and break tracking system for multi-site healthcare teams. It supports 20 staff members across 5 departments and 3 shift types (Morning 07:00–15:00, Afternoon 15:00–23:00, Night 23:00–07:00) and automatically calculates hours worked, late arrivals, early departures, and break durations.
+
+The live clock at the top of the screen reflects actual time, and attendance statuses (Active, On Break, Late, Early Out, Completed, Absent) update in real time. The Dashboard shows department-level coverage and a recent activity feed, while the AI Insights tab analyzes the day's attendance patterns and surfaces actionable workforce recommendations.`,
+  howTo: [
+    {
+      step: "1",
+      title: "Clock In a Staff Member",
+      detail: "In the Clock In / Out tab, select a staff member from the Browse list, use the Search bar to find them by name or role, or switch to PIN mode for self-service entry (each staff member has a unique 4-digit PIN). Once selected, their scheduled shift appears alongside the current time. Click 'Clock In' to record their entry.",
+    },
+    {
+      step: "2",
+      title: "Track Breaks and Clock Out",
+      detail: "After a staff member is clocked in, the action panel shows 'Start Break' and 'Clock Out.' Click 'Start Break' to begin a break timer; click 'End Break' to return them to active status. Clock Out records the exact departure time and calculates total hours worked minus break time.",
+    },
+    {
+      step: "3",
+      title: "Review the Attendance Log",
+      detail: "The Attendance Log tab shows all records for a selected date. Filter by department, status, or date range. Each row shows clock-in and clock-out times, number of breaks, hours worked, and status badge. This is your audit trail — use it to verify timekeeping accuracy or investigate discrepancies.",
+    },
+    {
+      step: "4",
+      title: "Monitor the Dashboard",
+      detail: "The Dashboard tab shows live KPI cards (hover to flip for definitions): Total Staff, Clocked In, On Break, Late Today, Absent, and Completed. Department coverage bars show the percentage of each department currently on the floor. The Recent Activity feed shows the last 10 clock events in reverse chronological order.",
+    },
+    {
+      step: "5",
+      title: "Run AI Insights",
+      detail: "In the AI Insights tab, click 'Run Analysis.' Claude reviews today's attendance data and returns an overall attendance score, specific concerns (e.g., a department below coverage threshold), positive trends, and actionable recommendations for supervisors. Results are session-only — re-run at any time for updated analysis.",
+    },
+  ],
+};
+
+// ── Guide Modal ───────────────────────────────────────────────────────────────
+function GuideModal({ onClose, onClearData }) {
+  const [confirmClear, setConfirmClear] = useState(false);
+
+  const handleClear = () => {
+    if (!confirmClear) {
+      setConfirmClear(true);
+    } else {
+      onClearData();
+      setConfirmClear(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position:"fixed", inset:0, zIndex:1100,
+        background:"rgba(10,16,10,0.55)",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        padding:"1rem", backdropFilter:"blur(2px)",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:C.white, borderRadius:14, width:"100%",
+          maxWidth:580, maxHeight:"88vh", overflowY:"auto",
+          boxShadow:"0 8px 40px rgba(0,0,0,0.22)",
+          fontFamily:FONTS.sans,
+        }}
+      >
+        <div style={{background:C.forest, borderRadius:"14px 14px 0 0", padding:"1.1rem 1.4rem", display:"flex", justifyContent:"space-between", alignItems:"center"}}>
+          <div>
+            <p style={{margin:0, fontSize:11, fontWeight:600, color:C.sageLt, letterSpacing:1, textTransform:"uppercase"}}>Tool Guide</p>
+            <h2 style={{margin:"3px 0 0", fontSize:17, fontWeight:700, color:C.cream}}>{GUIDE.title}</h2>
+          </div>
+          <button onClick={onClose}
+            style={{background:"rgba(255,255,255,0.12)", border:"none", cursor:"pointer", color:C.cream, fontSize:18, borderRadius:8, width:32, height:32, display:"flex", alignItems:"center", justifyContent:"center", lineHeight:1, flexShrink:0}}>✕</button>
+        </div>
+        <div style={{padding:"1.4rem"}}>
+          <div style={{marginBottom:"1.4rem"}}>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.6rem"}}>
+              <div style={{width:4, height:18, background:C.forest, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>What Is It For</h3>
+            </div>
+            {GUIDE.whatIsIt.split("\n\n").map((para, idx) => (
+              <p key={idx} style={{margin:"0 0 0.7rem", fontSize:13, color:C.ink, lineHeight:1.65}}>{para}</p>
+            ))}
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"0 0 1.4rem"}}/>
+          <div>
+            <div style={{display:"flex", alignItems:"center", gap:8, marginBottom:"0.9rem"}}>
+              <div style={{width:4, height:18, background:C.sageLt, borderRadius:2}}/>
+              <h3 style={{margin:0, fontSize:13, fontWeight:700, color:C.forest, textTransform:"uppercase", letterSpacing:0.7}}>How To Use It</h3>
+            </div>
+            <div style={{display:"flex", flexDirection:"column", gap:"0.85rem"}}>
+              {GUIDE.howTo.map((item) => (
+                <div key={item.step} style={{display:"flex", gap:"0.9rem", alignItems:"flex-start"}}>
+                  <div style={{width:26, height:26, borderRadius:"50%", background:C.forest, color:C.cream, fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1}}>{item.step}</div>
+                  <div>
+                    <p style={{margin:"0 0 3px", fontSize:13, fontWeight:600, color:C.ink}}>{item.title}</p>
+                    <p style={{margin:0, fontSize:12, color:C.muted, lineHeight:1.6}}>{item.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:"1.4rem", padding:"0.75rem 1rem", background:C.creamDk, borderRadius:8, borderLeft:`3px solid ${C.sageLt}`}}>
+            <p style={{margin:0, fontSize:11, color:C.muted, lineHeight:1.6}}>
+              <strong style={{color:C.ink}}>Tip:</strong> Attendance records are automatically saved to this browser as you clock staff in and out. Data persists across sessions — no manual save required.
+            </p>
+          </div>
+          <div style={{borderTop:`1px solid ${C.border}`, margin:"1.4rem 0 1.1rem"}}/>
+          <div style={{padding:"0.9rem 1rem", background: confirmClear ? C.dangerLt : "#fafaf8", borderRadius:8, border:`1px solid ${confirmClear ? C.danger : C.border}`, transition:"all 0.2s"}}>
+            <p style={{margin:"0 0 6px", fontSize:12, fontWeight:600, color: confirmClear ? C.danger : C.ink}}>
+              {confirmClear ? "⚠️ Are you sure? This cannot be undone." : "Reset Tool Data"}
+            </p>
+            <p style={{margin:"0 0 10px", fontSize:11, color:C.muted, lineHeight:1.5}}>
+              Clears all saved attendance records and restores the original demo data. Use this to reset for a new client or a clean demo.
+            </p>
+            <div style={{display:"flex", gap:8}}>
+              <button onClick={handleClear}
+                style={{fontSize:12, fontWeight:600, padding:"6px 14px", borderRadius:7, background: confirmClear ? C.danger : "none", color: confirmClear ? "#fff" : C.danger, border:`1px solid ${C.danger}`, cursor:"pointer"}}>
+                {confirmClear ? "Yes, clear all data" : "Clear All Data"}
+              </button>
+              {confirmClear && (
+                <button onClick={() => setConfirmClear(false)}
+                  style={{fontSize:12, padding:"6px 14px", borderRadius:7, background:"none", color:C.muted, border:`1px solid ${C.border}`, cursor:"pointer"}}>
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── PIN Pad ───────────────────────────────────────────────────────────────────
 function PinPad({ staff, onSelect }) {
@@ -188,7 +322,6 @@ function ActionPanel({ staff, record, now, settings, onAction, onClose }) {
         </div>
         <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:C.muted,padding:0}}>✕</button>
       </div>
-
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
         <div style={{background:C.creamDk,borderRadius:8,padding:"8px 12px"}}>
           <p style={{fontSize:10,color:C.muted,margin:"0 0 3px",fontWeight:600,letterSpacing:0.5}}>SCHEDULED</p>
@@ -202,7 +335,6 @@ function ActionPanel({ staff, record, now, settings, onAction, onClose }) {
           {record?.clockIn&&<StBadge s={status}/>}
         </div>
       </div>
-
       {record?.clockIn&&(
         <div style={{display:"flex",gap:10,fontSize:11,color:C.muted,marginBottom:12,flexWrap:"wrap"}}>
           <span>In: <strong style={{color:C.ink}}>{record.clockIn}</strong></span>
@@ -211,7 +343,6 @@ function ActionPanel({ staff, record, now, settings, onAction, onClose }) {
           {hoursWorked(record)!=null&&<span>Hours: <strong style={{color:C.ink}}>{fmtHrs(hoursWorked(record))}</strong></span>}
         </div>
       )}
-
       <div style={{display:"flex",flexDirection:"column",gap:8}}>
         {!record?.clockIn&&(
           <button onClick={()=>onAction("clockIn")} style={{padding:"13px",borderRadius:9,background:C.forest,color:C.cream,border:"none",cursor:"pointer",fontFamily:FONTS.sans,fontWeight:600,fontSize:14}}>
@@ -246,8 +377,16 @@ function ActionPanel({ staff, record, now, settings, onAction, onClose }) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function StaffAttendance() {
-  const [staff]                   = useState(STAFF_SEED);
-  const [records, setRecords]     = useState(buildSeedRecords);
+  const [staff]               = useState(STAFF_SEED);
+
+  // ── Load records from localStorage, fall back to SEED ──
+  const [records, setRecords] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : buildSeedRecords();
+    } catch { return buildSeedRecords(); }
+  });
+
   const [now, setNow]             = useState(new Date());
   const [activeTab, setActiveTab] = useState("clockin");
   const [method, setMethod]       = useState("browse");
@@ -261,15 +400,26 @@ export default function StaffAttendance() {
   const [aiReport, setAiReport]   = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError]     = useState(null);
+  const [showGuide, setShowGuide] = useState(false); // ← Guide modal state
   const nextId = useRef(100);
 
   useEffect(()=>{ const t=setInterval(()=>setNow(new Date()),1000); return()=>clearInterval(t); },[]);
 
-  useEffect(()=>{
-    try{const v=localStorage.getItem("sa_records"); if(v){const r=JSON.parse(v); setRecords(r); nextId.current=r.length+100;}}catch(e){}
-  },[]);
+  // ── Persist records to localStorage whenever they change ──
+  const saveRecords = rs => {
+    setRecords(rs);
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rs)); } catch {}
+  };
 
-  const saveRecords = rs => { setRecords(rs); try{localStorage.setItem("sa_records",JSON.stringify(rs));}catch(e){} };
+  // ── Clear all data: wipe localStorage, restore SEED ──
+  const handleClearData = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    const seed = buildSeedRecords();
+    setRecords(seed);
+    nextId.current = seed.length + 100;
+    setSelected(null);
+    setAiReport(null);
+  };
 
   const getRec = (staffId, date=todayStr()) => records.find(r=>r.staffId===staffId&&r.date===date);
 
@@ -315,13 +465,11 @@ export default function StaffAttendance() {
     const lateArr  = staff.filter(s=>{ const r=getR(s.id); const st=getStatus(r,s,settings.lateThreshold,settings.earlyThreshold); return st==="Late"; });
     const nowMin   = now.getHours()*60+now.getMinutes();
     const absent   = staff.filter(s=>{ const r=getR(s.id); const sm=SHIFT_META[s.shift]; return !r?.clockIn&&nowMin>(toMin(sm.start)+settings.lateThreshold); });
-
     const byDept=["Clinical","Administrative","IT","Executive","HR"].map(d=>{
       const ds=staff.filter(s=>s.dept===d);
       const din=ds.filter(s=>{ const r=getR(s.id); return r?.clockIn&&!r?.clockOut; });
       return {dept:d,total:ds.length,in:din.length,pct:ds.length?Math.round((din.length/ds.length)*100):0};
     });
-
     const recent=[...todayRecs].map(r=>{
       const s=staff.find(m=>m.id===r.staffId);
       const evs=[];
@@ -333,7 +481,6 @@ export default function StaffAttendance() {
       if(r.clockOut) evs.push({time:r.clockOut,type:"Clock Out",name:s?.name||"?",dept:s?.dept});
       return evs;
     }).flat().sort((a,b)=>b.time.localeCompare(a.time)).slice(0,10);
-
     return {active:active.length,onBreak:onBreak.length,completed:completed.length,late:lateArr.length,absent:absent.length,byDept,recent};
   },[records,staff,now,settings]);
 
@@ -363,15 +510,39 @@ export default function StaffAttendance() {
   return (
     <div style={{fontFamily:FONTS.sans,background:C.cream,minHeight:400,color:C.ink}}>
 
+      {/* ── Guide Modal ── */}
+      {showGuide && (
+        <GuideModal
+          onClose={() => setShowGuide(false)}
+          onClearData={handleClearData}
+        />
+      )}
+
       {/* Header with live clock */}
       <div style={{background:C.forest,padding:"0.9rem 1.5rem",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
         <div>
           <h2 style={{fontFamily:FONTS.serif,fontSize:20,fontWeight:400,color:C.cream,margin:"0 0 2px"}}>Staff Attendance</h2>
           <p style={{fontSize:11,color:C.sageLt,margin:0}}>Clock In · Clock Out · Break Tracking · Allied Healthcare</p>
         </div>
-        <div style={{textAlign:"right"}}>
-          <p style={{fontSize:20,fontWeight:700,color:C.cream,margin:"0 0 2px",fontFamily:"monospace,monospace"}}>{padHHMMSS(now)}</p>
-          <p style={{fontSize:10,color:"rgba(244,240,230,0.6)",margin:0}}>{curDate}</p>
+        <div style={{display:"flex",alignItems:"center",gap:14}}>
+          {/* ── Guide button ── */}
+          <button
+            onClick={() => setShowGuide(true)}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",borderRadius:8,background:"rgba(255,255,255,0.12)",color:C.cream,border:"1px solid rgba(255,255,255,0.2)",cursor:"pointer",fontSize:11,fontWeight:600,letterSpacing:0.4,flexShrink:0}}
+            onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,0.2)"}
+            onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,0.12)"}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+            </svg>
+            Guide
+          </button>
+          {/* Live clock */}
+          <div style={{textAlign:"right"}}>
+            <p style={{fontSize:20,fontWeight:700,color:C.cream,margin:"0 0 2px",fontFamily:"monospace,monospace"}}>{padHHMMSS(now)}</p>
+            <p style={{fontSize:10,color:"rgba(244,240,230,0.6)",margin:0}}>{curDate}</p>
+          </div>
         </div>
       </div>
       <div style={{height:3,background:`linear-gradient(90deg,${C.sage},${C.cream})`}}/>
@@ -420,8 +591,6 @@ export default function StaffAttendance() {
         {/* ── CLOCK IN / OUT ── */}
         {activeTab==="clockin"&&(
           <div style={{display:"flex",gap:16,alignItems:"flex-start",flexWrap:"wrap"}}>
-
-            {/* Left: staff selector */}
             <div style={{flex:"1 1 260px"}}>
               <div style={{display:"flex",gap:6,marginBottom:12}}>
                 {[["browse","Browse"],["search","Search"],["pin","PIN"]].map(([m,l])=>(
@@ -431,18 +600,15 @@ export default function StaffAttendance() {
                   </button>
                 ))}
               </div>
-
               {method==="search"&&(
                 <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search name or role…" autoFocus
                   style={{width:"100%",boxSizing:"border-box",fontSize:13,padding:"8px 12px",borderRadius:8,border:`0.5px solid ${C.border}`,background:C.white,color:C.ink,outline:"none",marginBottom:10,fontFamily:FONTS.sans}}/>
               )}
-
               {method==="pin"&&(
                 <div style={{display:"flex",justifyContent:"center",padding:"1rem 0"}}>
                   <PinPad staff={staff} onSelect={s=>{setSelected(s);setMethod("browse");}}/>
                 </div>
               )}
-
               {method!=="pin"&&(
                 <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:440,overflowY:"auto"}}>
                   {(method==="browse"?staff:filteredStaff).length===0&&<p style={{fontSize:13,color:C.muted}}>No staff found.</p>}
@@ -468,8 +634,6 @@ export default function StaffAttendance() {
                 </div>
               )}
             </div>
-
-            {/* Right: action panel */}
             <div style={{flex:"1 1 260px"}}>
               {selected?(
                 <ActionPanel staff={selected} record={getRec(selected.id)} now={now} settings={settings} onAction={handleAction} onClose={()=>setSelected(null)}/>
@@ -578,7 +742,6 @@ export default function StaffAttendance() {
                 </div>
               ))}
             </div>
-
             <div style={{background:C.white,border:`0.5px solid ${C.border}`,borderRadius:10,padding:"1.25rem"}}>
               <p style={{fontSize:11,fontWeight:600,color:C.muted,letterSpacing:0.8,margin:"0 0 14px"}}>COVERAGE BY DEPARTMENT</p>
               {dash.byDept.filter(d=>d.total>0).map(d=>(
@@ -596,7 +759,6 @@ export default function StaffAttendance() {
                 </div>
               ))}
             </div>
-
             <div style={{background:C.white,border:`0.5px solid ${C.border}`,borderRadius:10,padding:"1.25rem"}}>
               <p style={{fontSize:11,fontWeight:600,color:C.muted,letterSpacing:0.8,margin:"0 0 14px"}}>RECENT ACTIVITY</p>
               {dash.recent.length===0?(
